@@ -45,9 +45,9 @@ async def interpretar_sueno(data: DreamRequest):
     msg["From"] = EMAIL_FROM
     msg["To"] = data.email
 
-    with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-        server.starttls()
-        server.login(SMTP_USER, SMTP_PASS)
-        server.send_message(msg)
+   with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
+    server.login(SMTP_USER, SMTP_PASS)
+    server.send_message(msg)
+
 
     return {"message": "Interpretación enviada", "contenido": interpretacion}
