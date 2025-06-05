@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from openai import OpenAI
 import os
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,9 +23,9 @@ SMTP_SERVER = os.getenv("SMTP_SERVER")
 SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 
 class DreamRequest(BaseModel):
-    nombre: str
-    message: str
+    nombre: str = Field(alias="name")
     email: str
+    message: str
 
 @app.post("/interpretar")
 async def interpretar_sueno(data: DreamRequest):
