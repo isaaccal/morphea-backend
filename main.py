@@ -24,7 +24,7 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 
 class DreamRequest(BaseModel):
     nombre: str
-    sueno: str
+    message: str
     email: str
 
 @app.post("/interpretar")
@@ -40,7 +40,7 @@ async def interpretar_sueno(data: DreamRequest):
             },
             {
                 "role": "user",
-                "content": f"El usuario soñó lo siguiente:\n{data.sueno}\n\nDale una interpretación profesional clara:"
+                "content": f"El usuario soñó lo siguiente:\n{data.message}\n\nDale una interpretación profesional clara:"
             }
         ],
         temperature=0.7
