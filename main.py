@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from openai import OpenAI
 import os
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,12 +23,9 @@ SMTP_SERVER = os.getenv("SMTP_SERVER")
 SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 
 class DreamRequest(BaseModel):
-    nombre: str = Field(alias="name")
+    name: str
     email: str
     message: str
-
-    class Config:
-        allow_population_by_field_name = True
 
 @app.post("/interpretar")
 async def interpretar_sueno(data: DreamRequest):
@@ -43,7 +40,7 @@ async def interpretar_sueno(data: DreamRequest):
             },
             {
                 "role": "user",
-                "content": f"El usuario soñó lo siguiente:\n{data.message}\n\nDale una interpretación profesional clara:"
+                "content": f"El usuario {data.name} soñó lo siguiente:\n{data.message}"
             }
         ],
         temperature=0.7
@@ -62,4 +59,3 @@ async def interpretar_sueno(data: DreamRequest):
         server.send_message(msg)
 
     return {"message": "Interpretación enviada", "contenido": interpretacion}
-# actualización forzada
