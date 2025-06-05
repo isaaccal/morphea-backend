@@ -62,3 +62,4 @@ async def interpretar_sueno(data: DreamRequest):
         server.send_message(msg)
 
     return {"message": "Interpretación enviada", "contenido": interpretacion}
+# actualización forzada
