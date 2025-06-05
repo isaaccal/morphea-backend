@@ -51,7 +51,7 @@ async def interpretar_sueno(data: DreamRequest):
     # Enviar correo
     msg = MIMEText(interpretacion)
     msg["Subject"] = "Tu interpretación de sueño"
-    msg["From"] = SMTP_USER
+    msg["From"] = f"Morphea <{SMTP_USER}>"
     msg["To"] = data.email
 
     with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
