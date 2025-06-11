@@ -9,7 +9,7 @@ from email.mime.multipart import MIMEMultipart
 
 app = FastAPI()
 
-# CORS middleware
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,25 +17,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Variables de entorno
+# Config
 SMTP_USER = os.getenv("SMTP_USER")
 SMTP_PASS = os.getenv("SMTP_PASS")
 SMTP_SERVER = os.getenv("SMTP_SERVER")
 SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 
-# Modelo del cuerpo del formulario
+# Datos recibidos
 class DreamRequest(BaseModel):
     name: str
     email: str
     message: str
-    language: str = "es"  # español por defecto
+    language: str = "es"  # Idioma por defecto
 
-# Endpoint principal
 @app.post("/interpretar")
 async def interpretar_sueno(data: DreamRequest):
     client = OpenAI()
 
-    # Selección de idioma
     if data.language == "en":
         system_prompt = "You are an expert in professional dream interpretation based on psychology."
         user_prompt = f"The user {data.name} dreamed the following:\n{data.message}"
@@ -63,9 +61,10 @@ async def interpretar_sueno(data: DreamRequest):
         temperature=0.7
     )
 
-    interpretacion = response.choices[0].message.content
+    interpretacion_raw = response.choices[0].message.content
+    interpretacion_html = interpretacion_raw.replace("\n", "<br>")  # 👈 Lo procesamos aquí
 
-    # Cuerpo HTML del correo
+    # Email HTML
     html_content = f"""
     <html>
       <body style="font-family: Arial, sans-serif; color: #222; background-color: #f7f7f7; padding: 20px;">
@@ -73,7 +72,7 @@ async def interpretar_sueno(data: DreamRequest):
           <h2 style="color: #5C4DB1;">{greeting}</h2>
           <p>{intro}</p>
           <div style="background-color: #f0f0ff; border-left: 4px solid #5C4DB1; padding: 15px; margin: 20px 0;">
-            {interpretacion.replace('\n', '<br>')}
+            {interpretacion_html}
           </div>
           <p>{footer}</p>
           <p style="margin-top: 30px;">{signature}</p>
@@ -82,7 +81,6 @@ async def interpretar_sueno(data: DreamRequest):
     </html>
     """
 
-    # Crear y enviar correo
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = f"Morphea <{SMTP_USER}>"
@@ -94,4 +92,4 @@ async def interpretar_sueno(data: DreamRequest):
         server.login(SMTP_USER, SMTP_PASS)
         server.send_message(msg)
 
-    return {"message": "Interpretación enviada", "contenido": interpretacion}
+    return {"message": "Interpretación enviada", "contenido": interpretacion_raw}
