@@ -35,8 +35,10 @@ class DreamRequest(BaseModel):
 
 @app.post("/interpretar")
 async def interpretar_sueno(data: DreamRequest):
-    client = OpenAI()
+    # 👇 Registro para depuración en los logs de Render
+    print("Datos recibidos:", data.dict())
 
+    client = OpenAI()
     correo = data.email.strip().lower()
 
     # Verificar si ya usó su interpretación gratuita
