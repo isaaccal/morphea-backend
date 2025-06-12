@@ -3,3 +3,5 @@ uvicorn
 openai>=1.1.1
 python-multipart
 email-validator
+SQLAlchemy
+psycopg2-binary
