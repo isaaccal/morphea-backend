@@ -147,6 +147,30 @@ def interpretar_sueno(data: DreamRequest, current_email: str = Depends(get_curre
         server.send_message(msg)
 
     return {"message": "Interpretación enviada", "status": "success"}
+@app.get("/suscripcion")
+def obtener_suscripcion(current_email: str = Depends(get_current_email)):
+    with engine.connect() as conn:
+        result = conn.execute(text("""
+            SELECT s.max_dreams, s.used_dreams, s.expires_at, s.created_at
+            FROM users u
+            JOIN subscriptions s ON s.user_id = u.id
+            WHERE u.email = :email
+        """), {"email": current_email}).fetchone()
+
+        if not result:
+            raise HTTPException(status_code=404, detail="No tienes una suscripción activa")
+
+        max_dreams, used_dreams, expires_at, created_at = result
+        remaining = max_dreams - used_dreams
+
+        return {
+            "email": current_email,
+            "max_dreams": max_dreams,
+            "used_dreams": used_dreams,
+            "remaining_dreams": remaining,
+            "created_at": created_at,
+            "expires_at": expires_at
+        }
 
 # --- Importa las rutas de autenticación ---
 from auth import router as auth_router
