@@ -6,7 +6,7 @@ from jose import jwt
 import os
 from datetime import datetime, timedelta
 
-from main import get_db
+from database import get_db
 from models import User
 
 router = APIRouter()
