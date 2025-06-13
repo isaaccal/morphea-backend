@@ -107,18 +107,20 @@ def interpretar_sueno(data: DreamRequest, current_email: str = Depends(get_curre
         temperature=0.7
     )
 
-    interpretacion_html = response.choices[0].message.content.replace("\n", "<br>")
+    interpretacion_raw = response.choices[0].message.content
+    interpretacion_html = interpretacion_raw.replace("\n", "<br>")
 
     # Guardar sueño
     with engine.begin() as conn:
         conn.execute(text("""
-            INSERT INTO dreams (name, email, message, language)
-            VALUES (:name, :email, :message, :language)
+            INSERT INTO dreams (name, email, message, language, interpretation)
+            VALUES (:name, :email, :message, :language, :interpretation)
         """), {
             "name": data.name,
             "email": current_email,
             "message": data.message,
-            "language": data.language
+            "language": data.language,
+            "interpretation": interpretacion_raw
         })
 
     # Enviar correo
