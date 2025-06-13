@@ -1,13 +1,16 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
 from openai import OpenAI
 import os
-from fastapi.middleware.cors import CORSMiddleware
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from sqlalchemy import create_engine, text
+from jose import JWTError, jwt
 
+# Inicializar app
 app = FastAPI()
 
 # CORS
@@ -18,11 +21,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Autenticación
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
+SECRET_KEY = os.getenv("JWT_SECRET", "supersecret")
+ALGORITHM = "HS256"
+
+def get_current_user(token: str = Depends(oauth2_scheme)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload.get("sub")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token inválido")
+
 # Base de datos
 DB_URL = os.getenv("DB_URL")
 engine = create_engine(DB_URL)
 
-# Configuración de correo
+# Correo
 SMTP_USER = os.getenv("SMTP_USER")
 SMTP_PASS = os.getenv("SMTP_PASS")
 SMTP_SERVER = os.getenv("SMTP_SERVER")
@@ -35,7 +50,7 @@ class DreamRequest(BaseModel):
     language: str = "es"
 
 @app.post("/interpretar")
-async def interpretar_sueno(data: DreamRequest):
+async def interpretar_sueno(data: DreamRequest, user_email: str = Depends(get_current_user)):
     client = OpenAI()
     correo = data.email.strip().lower()
 
@@ -50,7 +65,7 @@ async def interpretar_sueno(data: DreamRequest):
                 "status": "limit-reached"
             }
 
-    # Preparar prompts
+    # Prompts
     if data.language == "en":
         system_prompt = "You are an expert in professional dream interpretation based on psychology."
         user_prompt = f"The user {data.name} dreamed the following:\n{data.message}"
@@ -68,7 +83,7 @@ async def interpretar_sueno(data: DreamRequest):
         footer = "Recuerda que cada sueño es único y muy personal. Si deseas enviar otro sueño o recibir más orientación, estamos aquí para ti."
         signature = "— El equipo de Morphea"
 
-    # OpenAI
+    # Interpretación con OpenAI
     response = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
@@ -125,5 +140,7 @@ async def interpretar_sueno(data: DreamRequest):
         "message": "Interpretación enviada",
         "status": "success"
     }
+
+# Autenticación
 from auth import router as auth_router
 app.include_router(auth_router)
