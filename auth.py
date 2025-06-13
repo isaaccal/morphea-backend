@@ -67,3 +67,34 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
 
     token = create_access_token(data={"sub": user.email})
     return {"access_token": token, "token_type": "bearer"}
+
+from fastapi.security import OAuth2PasswordBearer
+from jose import JWTError, jwt
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            raise HTTPException(status_code=401, detail="Token inválido")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token inválido")
+
+    user = db.query(User).filter(User.email == email).first()
+    if user is None:
+        raise HTTPException(status_code=401, detail="Usuario no encontrado")
+    return user
+
+@router.get("/me")
+def read_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    subscription = db.query(Subscription).filter(Subscription.user_id == current_user.id).first()
+    if subscription is None:
+        raise HTTPException(status_code=404, detail="Suscripción no encontrada")
+
+    return {
+        "email": current_user.email,
+        "dreams_allowed": subscription.dreams_allowed,
+        "dreams_used": subscription.dreams_used
+    }
