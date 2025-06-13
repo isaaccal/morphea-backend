@@ -110,8 +110,9 @@ def interpretar_sueno(data: DreamRequest, current_email: str = Depends(get_curre
     interpretacion_raw = response.choices[0].message.content
     interpretacion_html = interpretacion_raw.replace("\n", "<br>")
 
-    # Guardar sueño
+    # Guardar sueño e incrementar contador de uso
     with engine.begin() as conn:
+        # Guardar interpretación
         conn.execute(text("""
             INSERT INTO dreams (name, email, message, language, interpretation)
             VALUES (:name, :email, :message, :language, :interpretation)
@@ -122,6 +123,13 @@ def interpretar_sueno(data: DreamRequest, current_email: str = Depends(get_curre
             "language": data.language,
             "interpretation": interpretacion_raw
         })
+
+        # Incrementar sueño usado
+        conn.execute(text("""
+            UPDATE subscriptions
+            SET used_dreams = used_dreams + 1
+            WHERE user_id = (SELECT id FROM users WHERE email = :email)
+        """), {"email": current_email})
 
     # Enviar correo
     html_content = f"""
@@ -147,6 +155,8 @@ def interpretar_sueno(data: DreamRequest, current_email: str = Depends(get_curre
         server.send_message(msg)
 
     return {"message": "Interpretación enviada", "status": "success"}
+
+# --- Ruta para obtener suscripción ---
 @app.get("/suscripcion")
 def obtener_suscripcion(current_email: str = Depends(get_current_email)):
     with engine.connect() as conn:
