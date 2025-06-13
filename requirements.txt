@@ -5,3 +5,5 @@ python-multipart
 email-validator
 SQLAlchemy
 psycopg2-binary
+passlib[bcrypt]
+python-jose
