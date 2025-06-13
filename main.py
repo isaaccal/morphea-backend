@@ -6,6 +6,10 @@ from fastapi.middleware.cors import CORSMiddleware
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+from datetime import datetime
 
 app = FastAPI()
 
@@ -17,41 +21,54 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configuración de correo
+# ENV variables
 SMTP_USER = os.getenv("SMTP_USER")
 SMTP_PASS = os.getenv("SMTP_PASS")
 SMTP_SERVER = os.getenv("SMTP_SERVER")
 SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
+EMAIL_FROM = os.getenv("EMAIL_FROM")
+DB_URL = os.getenv("DB_URL")
 
-# Usuarios que ya usaron su interpretación gratuita (en memoria)
+# DB Setup
+engine = create_engine(DB_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+class Dream(Base):
+    __tablename__ = "dreams"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    email = Column(String, nullable=False)
+    message = Column(Text, nullable=False)
+    interpretation = Column(Text, nullable=False)
+    language = Column(String, nullable=False, default="es")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+Base.metadata.create_all(bind=engine)
+
+# Memoria temporal para controlar uso único
 usuarios_con_interpretacion = set()
 
-# Datos recibidos del formulario
 class DreamRequest(BaseModel):
     name: str
     email: str
     message: str
-    language: str = "es"  # Idioma por defecto
+    language: str = "es"
 
 @app.post("/interpretar")
 async def interpretar_sueno(data: DreamRequest):
-    # 👇 Registro para depuración en los logs de Render
-    print("Datos recibidos:", data.dict())
-
     client = OpenAI()
     correo = data.email.strip().lower()
 
-    # Verificar si ya usó su interpretación gratuita
     if correo in usuarios_con_interpretacion:
         return {
             "message": "Ya has usado tu interpretación gratuita. Si deseas enviar otro sueño, por favor adquiere un paquete.",
             "status": "limit-reached"
         }
 
-    # Registrar que ya usó la interpretación gratuita
     usuarios_con_interpretacion.add(correo)
 
-    # Preparar textos según idioma
+    # Idioma
     if data.language == "en":
         system_prompt = "You are an expert in professional dream interpretation based on psychology."
         user_prompt = f"The user {data.name} dreamed the following:\n{data.message}"
@@ -69,7 +86,7 @@ async def interpretar_sueno(data: DreamRequest):
         footer = "Recuerda que cada sueño es único y muy personal. Si deseas enviar otro sueño o recibir más orientación, estamos aquí para ti."
         signature = "— El equipo de Morphea"
 
-    # Interpretación con OpenAI
+    # OpenAI
     response = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
@@ -82,7 +99,20 @@ async def interpretar_sueno(data: DreamRequest):
     interpretacion_raw = response.choices[0].message.content
     interpretacion_html = interpretacion_raw.replace("\n", "<br>")
 
-    # HTML del correo
+    # Guardar en base de datos
+    db = SessionLocal()
+    nuevo_sueno = Dream(
+        name=data.name,
+        email=data.email,
+        message=data.message,
+        interpretation=interpretacion_raw,
+        language=data.language
+    )
+    db.add(nuevo_sueno)
+    db.commit()
+    db.close()
+
+    # Email HTML
     html_content = f"""
     <html>
       <body style="font-family: Arial, sans-serif; color: #222; background-color: #f7f7f7; padding: 20px;">
@@ -99,10 +129,9 @@ async def interpretar_sueno(data: DreamRequest):
     </html>
     """
 
-    # Envío de correo
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = f"Morphea <{SMTP_USER}>"
+    msg["From"] = f"Morphea <{EMAIL_FROM}>"
     msg["To"] = data.email
     msg["Bcc"] = "interpretaciones@morphea.ai"
     msg.attach(MIMEText(html_content, "html", _charset="utf-8"))
