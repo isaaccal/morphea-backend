@@ -181,6 +181,45 @@ def obtener_suscripcion(current_email: str = Depends(get_current_email)):
             "created_at": created_at,
             "expires_at": expires_at
         }
+from datetime import datetime, timedelta
+from typing import Optional
+
+class SuscripcionUpdate(BaseModel):
+    email: str
+    max_dreams: int
+    expires_in_days: Optional[int] = None  # Si no se envía, la suscripción no expira
+
+@app.post("/actualizar-suscripcion")
+def actualizar_suscripcion(data: SuscripcionUpdate):
+    with engine.begin() as conn:
+        # Verificar si el usuario existe
+        user_id_result = conn.execute(text("SELECT id FROM users WHERE email = :email"), {"email": data.email}).fetchone()
+        if not user_id_result:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+        user_id = user_id_result[0]
+
+        # Calcular expires_at si se desea
+        expires_at = None
+        if data.expires_in_days:
+            expires_at = datetime.utcnow() + timedelta(days=data.expires_in_days)
+
+        # Actualizar o insertar suscripción
+        existing = conn.execute(text("SELECT id FROM subscriptions WHERE user_id = :uid"), {"uid": user_id}).fetchone()
+        if existing:
+            conn.execute(text("""
+                UPDATE subscriptions
+                SET max_dreams = :max, used_dreams = 0, expires_at = :exp
+                WHERE user_id = :uid
+            """), {"max": data.max_dreams, "uid": user_id, "exp": expires_at})
+        else:
+            conn.execute(text("""
+                INSERT INTO subscriptions (user_id, max_dreams, used_dreams, expires_at)
+                VALUES (:uid, :max, 0, :exp)
+            """), {"uid": user_id, "max": data.max_dreams, "exp": expires_at})
+
+    return {"message": "Suscripción actualizada correctamente"}
+
 
 # --- Importa las rutas de autenticación ---
 from auth import router as auth_router
