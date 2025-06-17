@@ -226,3 +226,6 @@ def actualizar_suscripcion(data: SuscripcionUpdate):
 # --- Importa las rutas de autenticación ---
 from auth import router as auth_router
 app.include_router(auth_router)
+
+from checkout import router as checkout_router
+app.include_router(checkout_router)
