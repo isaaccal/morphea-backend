@@ -9,3 +9,4 @@ passlib[bcrypt]
 python-jose
 python-dotenv
 python-dotenv[cli]
+stripe>=5.0.0
