@@ -229,3 +229,6 @@ app.include_router(auth_router)
 
 from checkout import router as checkout_router
 app.include_router(checkout_router)
+
+from stripe_webhook import router as stripe_router
+app.include_router(stripe_router)
