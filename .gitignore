@@ -1,0 +1,7 @@
+# Ignorar entorno y archivos de prueba
+.env
+*.db
+__pycache__/
+*.pyc
+test_env.py
+test_jung_prompt.py
