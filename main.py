@@ -9,8 +9,13 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
-from openai import OpenAI
+from openai import OpenAI as OpenAIClient
 from pydantic import BaseModel
+
+# — Import de los agentes —
+from agents.freud_agent import interpret_freud
+from agents.jung_agent  import interpret_jung
+
 from sqlalchemy import text
 from database import engine, Base
 import smtplib
@@ -73,7 +78,7 @@ def interpretar_sueno(
     data: DreamRequest,
     current_email: str = Depends(get_current_email),
 ):
-    client = OpenAI(api_key=OPENAI_API_KEY)
+    client = OpenAIClient(api_key=OPENAI_API_KEY)
 
     # 1) Validar suscripción y saldo de sueños
     with engine.connect() as conn:
@@ -91,7 +96,7 @@ def interpretar_sueno(
         if dreams_used >= dreams_allowed:
             return {"status": "limit-reached", "message": "Límite alcanzado, actualiza tu plan"}
 
-    # 2) Prompts
+    # 2) Pautas de sistema y usuario
     if data.language.lower().startswith("en"):
         system  = "You are an expert in professional dream interpretation based on psychology."
         user    = f"The user {data.name} dreamed: {data.message}"
@@ -113,7 +118,7 @@ def interpretar_sueno(
             "— Equipo Morphea",
         )
 
-    # 3) Llamada a OpenAI
+    # 3) Llamada a OpenAI genérico
     resp = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[{"role": "system", "content": system},
@@ -164,7 +169,29 @@ def interpretar_sueno(
 
     return {"status": "success", "message": "Interpretación enviada"}
 
-# ─── Suscripciones ────────────────────────────────────────────────────────
+# ─── Endpoint /interpretar/freud ──────────────────────────────────────────
+@app.post("/interpretar/freud")
+async def interpretar_freud_endpoint(
+    data: DreamRequest,
+    current_email: str = Depends(get_current_email),
+):
+    if not data.message.strip():
+        raise HTTPException(status_code=400, detail="El texto del sueño no puede estar vacío.")
+    interpretation = interpret_freud(data.message)
+    return {"agent": "freud", "interpretation": interpretation}
+
+# ─── Endpoint /interpretar/jung ───────────────────────────────────────────
+@app.post("/interpretar/jung")
+async def interpretar_jung_endpoint(
+    data: DreamRequest,
+    current_email: str = Depends(get_current_email),
+):
+    if not data.message.strip():
+        raise HTTPException(status_code=400, detail="El texto del sueño no puede estar vacío.")
+    interpretation = interpret_jung(data.message)
+    return {"agent": "jung", "interpretation": interpretation}
+
+# ─── Suscripciones ───────────────────────────────────────────────────────
 @app.get("/suscripcion")
 def obtener_suscripcion(current_email: str = Depends(get_current_email)):
     with engine.connect() as conn:
