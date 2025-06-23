@@ -1,24 +1,29 @@
 # database.py
-
 import os
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-# Cargar variables desde el archivo .env
-load_dotenv()
+load_dotenv()                                           # lee .env
 
-# Leer la URL de conexión a la base de datos
 DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL no definida en .env")
 
-# Crear el motor de conexión
-engine = create_engine(DATABASE_URL)
+# Para SQLite se necesita un connect_args especial; para Postgres no.
+connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+    connect_args=connect_args,
+)
+
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
-
-# Declarar la base para los modelos
 Base = declarative_base()
 
-# Función para obtener una sesión de base de datos
+
+# Dependencia FastAPI → obtiene / libera sesión
 def get_db():
     db = SessionLocal()
     try:

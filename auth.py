@@ -1,107 +1,75 @@
-from fastapi import APIRouter, HTTPException, Depends
-from fastapi.security import OAuth2PasswordBearer
-from pydantic import BaseModel, EmailStr
-from sqlalchemy.orm import Session
-from passlib.context import CryptContext
-from jose import jwt, JWTError
-from datetime import datetime, timedelta
+# auth.py  ─── Endpoints: /register , /login , /me
 import os
+from datetime import datetime, timedelta
+from typing import Optional
+
+from dotenv import load_dotenv
+load_dotenv()                                # ← carga .env antes de leer variables
+
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.security import OAuth2PasswordRequestForm
+from jose import jwt
+from passlib.context import CryptContext
+from sqlalchemy.orm import Session
 
 from database import get_db
-from models import User, Subscription
+from models import User
 
-router = APIRouter()
+router = APIRouter(prefix="", tags=["auth"])  # cambia el prefijo si lo deseas
 
-# 🔐 Configuración de JWT
-SECRET_KEY = os.getenv("JWT_SECRET", "supersecret")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+# ─── Configuración JWT ────────────────────────────────────────────────────
+JWT_SECRET = os.getenv("JWT_SECRET_KEY") or "supersecret"
+ALGORITHM  = "HS256"
+ACCESS_TTL_MIN = 60 * 24  # 24 h
 
-# 🔐 Hasheo de contraseñas
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# 🛡️ Seguridad con token
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+# ─── Utilidades internas ─────────────────────────────────────────────────
+def hash_pwd(pwd: str) -> str:
+    return pwd_ctx.hash(pwd)
 
-# 📦 Esquemas
-class RegisterRequest(BaseModel):
-    email: EmailStr
-    password: str
+def verify_pwd(pwd: str, pwd_hash: str) -> bool:
+    return pwd_ctx.verify(pwd, pwd_hash)
 
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
+def create_access_token(email: str) -> str:
+    now   = datetime.utcnow()
+    exp   = now + timedelta(minutes=ACCESS_TTL_MIN)
+    claims = {"sub": email, "exp": exp}
+    return jwt.encode(claims, JWT_SECRET, algorithm=ALGORITHM)
 
-# 🎟️ Crear token JWT
-def create_access_token(data: dict, expires_delta: timedelta = None):
-    to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
-    to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+# ─── Esquemas Pydantic ───────────────────────────────────────────────────
+from pydantic import BaseModel, EmailStr, Field
 
-# 🧾 Registro de usuario con suscripción gratuita
-@router.post("/register")
-def register(data: RegisterRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == data.email).first()
-    if user:
-        raise HTTPException(status_code=400, detail="El correo ya está registrado")
+class RegisterIn(BaseModel):
+    email:    EmailStr
+    password: str = Field(min_length=6)
 
-    hashed_password = pwd_context.hash(data.password)
-    new_user = User(email=data.email, password_hash=hashed_password)
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
+class TokenOut(BaseModel):
+    access_token: str
+    token_type:   str = "bearer"
 
-    # 📥 Crear suscripción gratuita (1 sueño, sin expiración)
-    subscription = Subscription(
-        user_id=new_user.id,
-        dreams_allowed=1,
-        dreams_used=0,
-        created_at=datetime.utcnow(),
-        expires_at=None  # Sin vencimiento
-    )
-    db.add(subscription)
+# ─── Endpoints ────────────────────────────────────────────────────────────
+@router.post("/register", response_model=TokenOut)
+def register(data: RegisterIn, db: Session = Depends(get_db)):
+    if db.query(User).filter_by(email=data.email).first():
+        raise HTTPException(status_code=409, detail="Usuario ya existe")
+
+    u = User(email=data.email, password_hash=hash_pwd(data.password))
+    db.add(u)
     db.commit()
 
-    token = create_access_token({"sub": new_user.email})
-    return {"access_token": token, "token_type": "bearer"}
+    return {"access_token": create_access_token(u.email)}
 
-# 🔓 Login de usuario
-@router.post("/login")
-def login(data: LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == data.email).first()
-    if not user or not pwd_context.verify(data.password, user.password_hash):
+@router.post("/login", response_model=TokenOut)
+def login(form: OAuth2PasswordRequestForm = Depends(),
+          db: Session = Depends(get_db)):
+    user = db.query(User).filter_by(email=form.username).first()
+    if not user or not verify_pwd(form.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
+    return {"access_token": create_access_token(user.email)}
 
-    token = create_access_token({"sub": user.email})
-    return {"access_token": token, "token_type": "bearer"}
-
-# 👤 Obtener usuario actual desde el token
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str = payload.get("sub")
-        if email is None:
-            raise HTTPException(status_code=401, detail="Token inválido")
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Token inválido")
-
-    user = db.query(User).filter(User.email == email).first()
-    if user is None:
-        raise HTTPException(status_code=401, detail="Usuario no encontrado")
-    return user
-
-# 📊 Endpoint para consultar estado de la suscripción
 @router.get("/me")
-def read_me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    subscription = db.query(Subscription).filter(Subscription.user_id == current_user.id).first()
-    if subscription is None:
-        raise HTTPException(status_code=404, detail="Suscripción no encontrada")
-
-    return {
-        "email": current_user.email,
-        "dreams_allowed": subscription.dreams_allowed,
-        "dreams_used": subscription.dreams_used,
-        "created_at": subscription.created_at,
-        "expires_at": subscription.expires_at
-    }
+def read_me(current_email: str = Depends(
+        lambda creds=Depends(OAuth2PasswordRequestForm):
+            jwt.decode(creds.password, JWT_SECRET, algorithms=[ALGORITHM])["sub"])):
+    return {"email": current_email}
