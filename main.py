@@ -13,8 +13,9 @@ from openai import OpenAI as OpenAIClient
 from pydantic import BaseModel
 
 # — Import de los agentes —
-from agents.freud_agent import interpret_freud
-from agents.jung_agent  import interpret_jung
+from agents.freud_agent  import interpret_freud
+from agents.jung_agent   import interpret_jung
+from agents.adler_agent  import interpret_adler
 
 from sqlalchemy import text
 from database import engine, Base
@@ -190,6 +191,17 @@ async def interpretar_jung_endpoint(
         raise HTTPException(status_code=400, detail="El texto del sueño no puede estar vacío.")
     interpretation = interpret_jung(data.message)
     return {"agent": "jung", "interpretation": interpretation}
+
+# ─── Endpoint /interpretar/adler ──────────────────────────────────────────
+@app.post("/interpretar/adler")
+async def interpretar_adler_endpoint(
+    data: DreamRequest,
+    current_email: str = Depends(get_current_email),
+):
+    if not data.message.strip():
+        raise HTTPException(status_code=400, detail="El texto del sueño no puede estar vacío.")
+    interpretation = interpret_adler(data.message)
+    return {"agent": "adler", "interpretation": interpretation}
 
 # ─── Suscripciones ───────────────────────────────────────────────────────
 @app.get("/suscripcion")
