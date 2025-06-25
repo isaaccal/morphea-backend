@@ -5,6 +5,9 @@ langchain
 langchain_community
 langchain_openai
 python-dotenv
+pypdf
+tiktoken
+pgvector
 SQLAlchemy
 psycopg2-binary
 passlib[bcrypt]
