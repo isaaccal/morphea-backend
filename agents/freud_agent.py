@@ -1,84 +1,87 @@
 # agents/freud_agent.py
 
 """
-Agente RAG de Freud para Morphea.ai:
-Recupera fragmentos del PDF ingestado y genera interpretaciones con citas exactas.
+Agente Freud con RAG manual:
+1. Busca en pgvector los 3 mejores fragmentos.
+2. Construye el prompt con dream, context y language.
+3. Llama a ChatOpenAI y devuelve la interpretación.
 """
 
 import os
-from datetime import datetime
-from dotenv import load_dotenv
+import pathlib
+from typing import Dict, List
 
-# Cargar variables de entorno (.env)
+from dotenv import load_dotenv
 load_dotenv()
 
 import openai
-from langchain.chat_models import ChatOpenAI
-from langchain.prompts import PromptTemplate
-from langchain.chains import RetrievalQA
+from pypdf import PdfReader
+
+# LangChain imports
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import OpenAIEmbeddings
 from langchain_community.vectorstores import PGVector
+from langchain_community.chat_models import ChatOpenAI
+from langchain.schema import Document, HumanMessage
 
-# Configuración de OpenAI
-environment_key = os.getenv("OPENAI_API_KEY")
-if not environment_key:
-    raise ValueError("Falta la variable OPENAI_API_KEY en el entorno")
-openai.api_key = environment_key
+# ---------- Configuración RAG ----------
+# Ruta al PDF (no se usa aquí, porque ya ingresaste)
+# PDF_PATH = pathlib.Path("data/freud_interpretation_of_dreams.pdf")
 
-# Conexión RAG: usar DATABASE_URL de .env para pgvector
+# Clave OpenAI
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
+# Conexión a tu DB con vector store
 SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
 if not SQLALCHEMY_DATABASE_URL:
-    raise ValueError("Falta DATABASE_URL en el entorno para RAG de Freud")
+    raise ValueError("Falta DATABASE_URL en el .env")
 
-COLLECTION_NAME = "freud_dreams"
-
-# Crear instancia de embeddings y vectorstore
+# Inicializa embeddings y vector store
 embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
 vector_store = PGVector(
-    collection_name=COLLECTION_NAME,
+    collection_name="freud_dreams",
     connection_string=SQLALCHEMY_DATABASE_URL,
     embedding_function=embeddings,
 )
 
-# Prompt maestro con contexto RAG
-template = """
-Eres Sigmund Freud y explicas sueños con referencias exactas a tu obra.
+# Prompt maestro
+PROMPT_TMPL = """Eres Sigmund Freud y explicas sueños con referencias exactas a tu obra.
 
 <SUEÑO>
 {dream}
 </SUEÑO>
 
-Usa los fragmentos a continuación (CONTEXTO) para fundamentar tu respuesta.
+Usa el contexto (fragmentos originales) para fundamentar tu respuesta.
 Responde en {language}. Cita fuente entre paréntesis: (Freud, 1900, p.<número>).
 
 CONTEXTO:
 {context}
 """
-prompt = PromptTemplate(
-    input_variables=["dream", "context", "language"],
-    template=template,
-)
 
-# Cadena RetrievalQA
-qa_chain = RetrievalQA.from_chain_type(
-    llm=ChatOpenAI(model_name="gpt-4o-mini", temperature=0.7),
-    chain_type="stuff",
-    retriever=vector_store.as_retriever(search_kwargs={"k": 3}),
-    chain_type_kwargs={"prompt": prompt},
-)
+def interpret_freud(dream_text: str, language: str = "es") -> Dict:
+    # 1. Recuperar documentos
+    retriever = vector_store.as_retriever(search_kwargs={"k": 3})
+    docs: List[Document] = retriever.get_relevant_documents(dream_text)
 
-def interpret_freud(dream_text: str, language: str = "es") -> dict:
-    """
-    Genera una interpretación de Freud usando RAG.
-    Retorna un dict con campos:
-      - agent: 'freud'
-      - timestamp: ISO UTC
-      - text: la interpretación completa
-    """
-    result = qa_chain({"query": dream_text, "language": language})
-    interpretation = result["result"].strip()
+    # 2. Construir contexto
+    context = "\n\n".join([doc.page_content for doc in docs])
+
+    # 3. Formatear prompt
+    prompt_str = PROMPT_TMPL.format(
+        dream=dream_text,
+        context=context,
+        language=language
+    )
+
+    # 4. Llamar a LLM
+    llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0.7)
+    response = llm.chat([HumanMessage(content=prompt_str)])
+    interpretation = response.content.strip()
+
+    # 5. Devolver formato esperado
     return {
         "agent": "freud",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": response.additional_kwargs.get("created_at") 
+                    if hasattr(response, "additional_kwargs") else None,
         "text": interpretation,
     }
