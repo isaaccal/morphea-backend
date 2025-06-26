@@ -1,54 +1,48 @@
-   en System.Threading.Tasks.Task`1.InnerInvoke()
-   en System.Threading.Tasks.Task.Execute()
---- Fin del seguimiento de la pila de la ubicación anterior donde se produjo la excepción ---
-   en System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw()
-   en System.Runtime.CompilerServices.TaskAwaiter.HandleNonSuccessAndDebuggerNotification(Task task)
-   en Microsoft.VisualStudio.Setup.Download.DownloadManagerAuthenticationProxy.<MungeUriAsync>d__28.MoveNext()
-[45b0:0016][2025-06-25T19:10:12] Download requested: https://aka.ms/vs/16/release/channel
-[45b0:0016][2025-06-25T19:10:12] Error 0x8013153b: [45b0:0016][2025-06-25T19:10:12] Could not update channel "https://aka.ms/vs/16/release/channel"
-   en System.Runtime.CompilerServices.TaskAwaiter.ThrowForNonSuccess(Task task)
-   en System.Runtime.CompilerServices.TaskAwaiter.HandleNonSuccessAndDebuggerNotification(Task task)
-   en Microsoft.VisualStudio.Setup.Download.DownloadManagerAuthenticationProxy.<Download>d__27.MoveNext()
---- Fin del seguimiento de la pila de la ubicación anterior donde se produjo la excepción ---
-   en System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw()
-   en System.Runtime.CompilerServices.TaskAwaiter.ThrowForNonSuccess(Task task)
-   en System.Runtime.CompilerServices.TaskAwaiter.HandleNonSuccessAndDebuggerNotification(Task task)
-   en Microsoft.VisualStudio.Setup.ChannelDownloader.<GetLatestChannelManifestAsync>d__7.MoveNext()
---- Fin del seguimiento de la pila de la ubicación anterior donde se produjo la excepción ---
-   en System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw()
-   en System.Runtime.CompilerServices.TaskAwaiter.ThrowForNonSuccess(Task task)
-   en System.Runtime.CompilerServices.TaskAwaiter.HandleNonSuccessAndDebuggerNotification(Task task)
-   en Microsoft.VisualStudio.Setup.ChannelManager.<UpdateChannelManifestAsync>d__70.MoveNext()
-Warning: [45b0:0016][2025-06-25T19:10:12] Se canceló una tarea.
-Warning: [45b0:0016][2025-06-25T19:10:12] Didn't find any channel feed.
-[45b0:0019][2025-06-25T19:10:12] WebClient error 'RequestCanceled' with 'https://aka.ms/vs/channels' - ExecuteWithRetryAsync failed along with a cancellation request
-Warning: [45b0:0019][2025-06-25T19:10:12] Failed to get the HttpWebResponse while invoking a HEAD request against https://aka.ms/vs/channels:System.OperationCanceledException: Operación cancelada.
-   en System.Threading.CancellationToken.ThrowOperationCanceledException()
-   en System.Threading.CancellationToken.ThrowIfCancellationRequested()
-   en Microsoft.VisualStudio.Setup.Download.WebRequestService.<>c__DisplayClass9_0.<ExecuteWithRetryAsync>b__0(Object _)
-   en System.Threading.Tasks.Task`1.InnerInvoke()
-   en System.Threading.Tasks.Task.Execute()
---- Fin del seguimiento de la pila de la ubicación anterior donde se produjo la excepción ---
-   en System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw()
-   en System.Runtime.CompilerServices.TaskAwaiter.HandleNonSuccessAndDebuggerNotification(Task task)
-   en Microsoft.VisualStudio.Setup.Download.DownloadManagerAuthenticationProxy.<MungeUriAsync>d__28.MoveNext()
-[45b0:0019][2025-06-25T19:10:12] Download requested: https://aka.ms/vs/channels
-Warning: [45b0:0005][2025-06-25T19:10:12] Failed to download channels file from https://aka.ms/vs/channels: Se canceló una tarea.
-[45b0:001b][2025-06-25T19:10:12] WebClient error 'RequestCanceled' with 'https://aka.ms/vs/installer/latest/feed' - ExecuteWithRetryAsync failed along with a cancellation request
-Warning: [45b0:001b][2025-06-25T19:10:12] Failed to get the HttpWebResponse while invoking a HEAD request against https://aka.ms/vs/installer/latest/feed:System.OperationCanceledException: Operación cancelada.
-   en System.Threading.CancellationToken.ThrowOperationCanceledException()
-   en System.Threading.CancellationToken.ThrowIfCancellationRequested()
-   en Microsoft.VisualStudio.Setup.Download.WebRequestService.<>c__DisplayClass9_0.<ExecuteWithRetryAsync>b__0(Object _)
-   en System.Threading.Tasks.Task`1.InnerInvoke()
-   en System.Threading.Tasks.Task.Execute()
---- Fin del seguimiento de la pila de la ubicación anterior donde se produjo la excepción ---
-   en System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw()
-   en System.Runtime.CompilerServices.TaskAwaiter.HandleNonSuccessAndDebuggerNotification(Task task)
-   en Microsoft.VisualStudio.Setup.Download.DownloadManagerAuthenticationProxy.<MungeUriAsync>d__28.MoveNext()
-[45b0:001b][2025-06-25T19:10:12] Download requested: https://aka.ms/vs/installer/latest/feed
-Warning: [45b0:001b][2025-06-25T19:10:12] Failed to update the latest installer feed Se canceló una tarea.
-Warning: [45b0:001b][2025-06-25T19:10:12] Didn't find any channel feed.
-[45b0:0004][2025-06-25T19:10:12] Status changed to NoUpdate
-Warning: [45b0:0011][2025-06-25T19:10:12] Didn't find any channel feed.
-Warning: [45b0:0008][2025-06-25T19:10:12] Didn't find any channel feed.
-[45b0:0003][2025-06-25T19:10:13] Authenticode verification returned 0x00000000 for path: C:\Program Files (x86)\Microsoft Visual Studio\Installer\setup.exe.
+PS C:\users\administrator\morphea-backend> .\commit.ps1 -msg "fix: usar llm.generate() en Freud agent para evitar AttributeError"
+[main f99c445] fix: usar llm.generate() en Freud agent para evitar AttributeError
+ 7 files changed, 483 insertions(+), 24 deletions(-)
+ create mode 100644 Logs/Log .txt
+ create mode 100644 Logs/Log Render.txt
+ create mode 100644 Logs/Log2.txt
+ create mode 100644 commit.ps1
+ create mode 100644 push.ps1
+PS C:\users\administrator\morphea-backend> .\push.ps1
+â¬†ï¸  Haciendo push de la rama 'main' a origin...
+Enumerating objects: 15, done.
+Counting objects: 100% (15/15), done.
+Delta compression using up to 4 threads
+Compressing objects: 100% (11/11), done.
+Writing objects: 100% (11/11), 166.06 KiB | 11.86 MiB/s, done.
+Total 11 (delta 3), reused 0 (delta 0), pack-reused 0 (from 0)
+remote: Resolving deltas: 100% (3/3), completed with 3 local objects.
+To https://github.com/isaaccal/morphea-backend.git
+   0a9965c..f99c445  main -> main
+PS C:\users\administrator\morphea-backend> .\redeploy.ps1
+.\redeploy.ps1 : El término '.\redeploy.ps1' no se reconoce como nombre de un cmdlet, función, archivo de script o
+programa ejecutable. Compruebe si escribió correctamente el nombre o, si incluyó una ruta de acceso, compruebe que
+dicha ruta es correcta e inténtelo de nuevo.
+En línea: 1 Carácter: 1
++ .\redeploy.ps1
++ ~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (.\redeploy.ps1:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\users\administrator\morphea-backend> .\commit.ps1 -msg "fix: usar llm.generate() en Freud agent para evitar AttributeError"
+On branch main
+Your branch is up to date with 'origin/main'.
+
+nothing to commit, working tree clean
+PS C:\users\administrator\morphea-backend> .\push.ps1
+â¬†ï¸  Haciendo push de la rama 'main' a origin...
+Everything up-to-date
+PS C:\users\administrator\morphea-backend> .\redeploy.ps1
+.\redeploy.ps1 : El término '.\redeploy.ps1' no se reconoce como nombre de un cmdlet, función, archivo de script o
+programa ejecutable. Compruebe si escribió correctamente el nombre o, si incluyó una ruta de acceso, compruebe que
+dicha ruta es correcta e inténtelo de nuevo.
+En línea: 1 Carácter: 1
++ .\redeploy.ps1
++ ~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (.\redeploy.ps1:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS C:\users\administrator\morphea-backend>
