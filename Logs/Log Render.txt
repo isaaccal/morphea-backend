@@ -1,0 +1,100 @@
+2025-06-26T01:45:34.20993954Z   warnings.warn(
+2025-06-26T01:45:34.209956651Z /opt/render/project/src/.venv/lib/python3.11/site-packages/langchain/__init__.py:30: UserWarning: Importing LLMChain from langchain root module is no longer supported. Please use langchain.chains.LLMChain instead.
+2025-06-26T01:45:34.209970121Z   warnings.warn(
+2025-06-26T01:45:34.604489612Z /opt/render/project/src/.venv/lib/python3.11/site-packages/langchain/__init__.py:30: UserWarning: Importing PromptTemplate from langchain root module is no longer supported. Please use langchain_core.prompts.PromptTemplate instead.
+2025-06-26T01:45:34.604526573Z   warnings.warn(
+2025-06-26T01:45:34.604531623Z /opt/render/project/src/.venv/lib/python3.11/site-packages/langchain/__init__.py:30: UserWarning: Importing LLMChain from langchain root module is no longer supported. Please use langchain.chains.LLMChain instead.
+2025-06-26T01:45:34.604534364Z   warnings.warn(
+2025-06-26T01:45:35.506396442Z INFO:     Started server process [85]
+2025-06-26T01:45:35.506424393Z INFO:     Waiting for application startup.
+2025-06-26T01:45:35.506727231Z INFO:     Application startup complete.
+2025-06-26T01:45:35.507081741Z INFO:     Uvicorn running on http://0.0.0.0:10000 (Press CTRL+C to quit)
+2025-06-26T01:45:39.974830535Z INFO:     189.236.2.1:0 - "HEAD /docs HTTP/1.1" 200 OK
+2025-06-26T01:45:39.977320374Z INFO:     189.236.2.1:0 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+2025-06-26T01:45:39.993410013Z INFO:     189.236.2.1:0 - "HEAD /docs HTTP/1.1" 200 OK
+2025-06-26T01:45:40.073568208Z INFO:     189.236.2.1:0 - "HEAD /docs HTTP/1.1" 200 OK
+2025-06-26T01:45:40.081994313Z INFO:     189.236.2.1:0 - "HEAD /docs HTTP/1.1" 200 OK
+2025-06-26T01:45:40.082909918Z INFO:     189.236.2.1:0 - "HEAD /docs HTTP/1.1" 200 OK
+2025-06-26T01:45:40.085383407Z INFO:     189.236.2.1:0 - "HEAD /docs HTTP/1.1" 200 OK
+2025-06-26T01:45:40.105692604Z INFO:     189.236.2.1:0 - "HEAD /docs HTTP/1.1" 200 OK
+2025-06-26T01:45:40.119313693Z INFO:     189.236.2.1:0 - "HEAD /docs HTTP/1.1" 200 OK
+2025-06-26T01:45:40.132260614Z INFO:     189.236.2.1:0 - "HEAD /docs HTTP/1.1" 200 OK
+2025-06-26T01:45:40.166624863Z INFO:     189.236.2.1:0 - "HEAD /docs HTTP/1.1" 200 OK
+2025-06-26T01:45:40.22680313Z INFO:     189.236.2.1:0 - "HEAD /docs HTTP/1.1" 200 OK
+2025-06-26T01:45:40.317452158Z INFO:     189.236.2.1:0 - "GET /docs HTTP/1.1" 200 OK
+2025-06-26T01:45:40.455158798Z INFO:     189.236.2.1:0 - "HEAD /docs HTTP/1.1" 200 OK
+2025-06-26T01:45:40.54273254Z INFO:     189.236.2.1:0 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+2025-06-26T01:45:40.567743128Z INFO:     189.236.2.1:0 - "HEAD /docs HTTP/1.1" 200 OK
+2025-06-26T01:45:40.724962782Z INFO:     189.236.2.1:0 - "GET /openapi.json HTTP/1.1" 200 OK
+2025-06-26T01:45:40.780514501Z INFO:     189.236.2.1:0 - "HEAD /docs HTTP/1.1" 200 OK
+2025-06-26T01:45:40.847612942Z INFO:     189.236.2.1:0 - "HEAD /docs HTTP/1.1" 200 OK
+2025-06-26T01:46:31.216859395Z INFO:     189.236.2.1:0 - "POST /register HTTP/1.1" 409 Conflict
+2025-06-26T01:47:28.252985966Z (trapped) error reading bcrypt version
+2025-06-26T01:47:28.253003447Z Traceback (most recent call last):
+2025-06-26T01:47:28.253018577Z   File "/opt/render/project/src/.venv/lib/python3.11/site-packages/passlib/handlers/bcrypt.py", line 620, in _load_backend_mixin
+2025-06-26T01:47:28.253023328Z     version = _bcrypt.__about__.__version__
+2025-06-26T01:47:28.253027648Z               ^^^^^^^^^^^^^^^^^
+2025-06-26T01:47:28.253031848Z AttributeError: module 'bcrypt' has no attribute '__about__'
+2025-06-26T01:47:30.012032863Z INFO:     189.236.2.1:0 - "POST /login HTTP/1.1" 200 OK
+2025-06-26T01:48:31.827446707Z /opt/render/project/src/agents/freud_agent.py:64: LangChainDeprecationWarning: The method `BaseRetriever.get_relevant_documents` was deprecated in langchain-core 0.1.46 and will be removed in 1.0. Use :meth:`~invoke` instead.
+2025-06-26T01:48:31.827483077Z   docs: List[Document] = retriever.get_relevant_documents(dream_text)
+2025-06-26T01:48:34.566290488Z /opt/render/project/src/agents/freud_agent.py:77: LangChainDeprecationWarning: The class `ChatOpenAI` was deprecated in LangChain 0.0.10 and will be removed in 1.0. An updated version of the class exists in the :class:`~langchain-openai package and should be used instead. To use it run `pip install -U :class:`~langchain-openai` and import as `from :class:`~langchain_openai import ChatOpenAI``.
+2025-06-26T01:48:34.566338939Z   llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0.7)
+2025-06-26T01:48:35.00359953Z INFO:     189.236.2.1:0 - "POST /interpretar/freud HTTP/1.1" 500 Internal Server Error
+2025-06-26T01:48:35.018771553Z ERROR:    Exception in ASGI application
+2025-06-26T01:48:35.018791724Z Traceback (most recent call last):
+2025-06-26T01:48:35.018795564Z   File "/opt/render/project/src/.venv/lib/python3.11/site-packages/uvicorn/protocols/http/h11_impl.py", line 403, in run_asgi
+2025-06-26T01:48:35.018798824Z     result = await app(  # type: ignore[func-returns-value]
+2025-06-26T01:48:35.018801984Z              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-06-26T01:48:35.018804594Z   File "/opt/render/project/src/.venv/lib/python3.11/site-packages/uvicorn/middleware/proxy_headers.py", line 60, in __call__
+2025-06-26T01:48:35.018807014Z     return await self.app(scope, receive, send)
+2025-06-26T01:48:35.018809234Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-06-26T01:48:35.018811634Z   File "/opt/render/project/src/.venv/lib/python3.11/site-packages/fastapi/applications.py", line 1054, in __call__
+2025-06-26T01:48:35.018813894Z     await super().__call__(scope, receive, send)
+2025-06-26T01:48:35.018816244Z   File "/opt/render/project/src/.venv/lib/python3.11/site-packages/starlette/applications.py", line 112, in __call__
+2025-06-26T01:48:35.018818654Z     await self.middleware_stack(scope, receive, send)
+2025-06-26T01:48:35.018821165Z   File "/opt/render/project/src/.venv/lib/python3.11/site-packages/starlette/middleware/errors.py", line 187, in __call__
+2025-06-26T01:48:35.018823945Z     raise exc
+2025-06-26T01:48:35.018826765Z   File "/opt/render/project/src/.venv/lib/python3.11/site-packages/starlette/middleware/errors.py", line 165, in __call__
+2025-06-26T01:48:35.018828585Z     await self.app(scope, receive, _send)
+2025-06-26T01:48:35.018830255Z   File "/opt/render/project/src/.venv/lib/python3.11/site-packages/starlette/middleware/cors.py", line 93, in __call__
+2025-06-26T01:48:35.018832675Z     await self.simple_response(scope, receive, send, request_headers=headers)
+2025-06-26T01:48:35.018834405Z   File "/opt/render/project/src/.venv/lib/python3.11/site-packages/starlette/middleware/cors.py", line 144, in simple_response
+2025-06-26T01:48:35.018836085Z     await self.app(scope, receive, send)
+2025-06-26T01:48:35.018837845Z   File "/opt/render/project/src/.venv/lib/python3.11/site-packages/starlette/middleware/exceptions.py", line 62, in __call__
+2025-06-26T01:48:35.018839555Z     await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+2025-06-26T01:48:35.018841225Z   File "/opt/render/project/src/.venv/lib/python3.11/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+2025-06-26T01:48:35.018843405Z     raise exc
+2025-06-26T01:48:35.018845115Z   File "/opt/render/project/src/.venv/lib/python3.11/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+2025-06-26T01:48:35.018846845Z     await app(scope, receive, sender)
+2025-06-26T01:48:35.018849235Z   File "/opt/render/project/src/.venv/lib/python3.11/site-packages/starlette/routing.py", line 714, in __call__
+2025-06-26T01:48:35.018850935Z     await self.middleware_stack(scope, receive, send)
+2025-06-26T01:48:35.018852635Z   File "/opt/render/project/src/.venv/lib/python3.11/site-packages/starlette/routing.py", line 734, in app
+2025-06-26T01:48:35.018854315Z     await route.handle(scope, receive, send)
+2025-06-26T01:48:35.018855975Z   File "/opt/render/project/src/.venv/lib/python3.11/site-packages/starlette/routing.py", line 288, in handle
+2025-06-26T01:48:35.018867856Z     await self.app(scope, receive, send)
+2025-06-26T01:48:35.018869706Z   File "/opt/render/project/src/.venv/lib/python3.11/site-packages/starlette/routing.py", line 76, in app
+2025-06-26T01:48:35.018871446Z     await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+2025-06-26T01:48:35.018873116Z   File "/opt/render/project/src/.venv/lib/python3.11/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+2025-06-26T01:48:35.018874826Z     raise exc
+2025-06-26T01:48:35.018876586Z   File "/opt/render/project/src/.venv/lib/python3.11/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+2025-06-26T01:48:35.018878266Z     await app(scope, receive, sender)
+2025-06-26T01:48:35.018879926Z   File "/opt/render/project/src/.venv/lib/python3.11/site-packages/starlette/routing.py", line 73, in app
+2025-06-26T01:48:35.018882366Z     response = await f(request)
+2025-06-26T01:48:35.018884046Z                ^^^^^^^^^^^^^^^^
+2025-06-26T01:48:35.018885756Z   File "/opt/render/project/src/.venv/lib/python3.11/site-packages/fastapi/routing.py", line 301, in app
+2025-06-26T01:48:35.018957258Z     raw_response = await run_endpoint_function(
+2025-06-26T01:48:35.018959258Z                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-06-26T01:48:35.018961078Z   File "/opt/render/project/src/.venv/lib/python3.11/site-packages/fastapi/routing.py", line 212, in run_endpoint_function
+2025-06-26T01:48:35.018962878Z     return await dependant.call(**values)
+2025-06-26T01:48:35.018964558Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-06-26T01:48:35.018966329Z   File "/opt/render/project/src/main.py", line 182, in interpretar_freud_route
+2025-06-26T01:48:35.018968069Z     result = interpret_freud(data.message, language=data.language)
+2025-06-26T01:48:35.018969789Z              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-06-26T01:48:35.018972439Z   File "/opt/render/project/src/agents/freud_agent.py", line 78, in interpret_freud
+2025-06-26T01:48:35.018974199Z     response = llm.chat([HumanMessage(content=prompt_str)])
+2025-06-26T01:48:35.018976529Z                ^^^^^^^^
+2025-06-26T01:48:35.018978339Z   File "/opt/render/project/src/.venv/lib/python3.11/site-packages/pydantic/main.py", line 991, in __getattr__
+2025-06-26T01:48:35.018993109Z     raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+2025-06-26T01:48:35.018996039Z AttributeError: 'ChatOpenAI' object has no attribute 'chat'
+2025-06-26T01:49:17.916965478Z INFO:     189.236.2.1:0 - "GET /favicon.ico HTTP/1.1" 404 Not Found

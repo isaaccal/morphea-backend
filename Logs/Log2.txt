@@ -1,0 +1,54 @@
+   en System.Threading.Tasks.Task`1.InnerInvoke()
+   en System.Threading.Tasks.Task.Execute()
+--- Fin del seguimiento de la pila de la ubicación anterior donde se produjo la excepción ---
+   en System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw()
+   en System.Runtime.CompilerServices.TaskAwaiter.HandleNonSuccessAndDebuggerNotification(Task task)
+   en Microsoft.VisualStudio.Setup.Download.DownloadManagerAuthenticationProxy.<MungeUriAsync>d__28.MoveNext()
+[45b0:0016][2025-06-25T19:10:12] Download requested: https://aka.ms/vs/16/release/channel
+[45b0:0016][2025-06-25T19:10:12] Error 0x8013153b: [45b0:0016][2025-06-25T19:10:12] Could not update channel "https://aka.ms/vs/16/release/channel"
+   en System.Runtime.CompilerServices.TaskAwaiter.ThrowForNonSuccess(Task task)
+   en System.Runtime.CompilerServices.TaskAwaiter.HandleNonSuccessAndDebuggerNotification(Task task)
+   en Microsoft.VisualStudio.Setup.Download.DownloadManagerAuthenticationProxy.<Download>d__27.MoveNext()
+--- Fin del seguimiento de la pila de la ubicación anterior donde se produjo la excepción ---
+   en System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw()
+   en System.Runtime.CompilerServices.TaskAwaiter.ThrowForNonSuccess(Task task)
+   en System.Runtime.CompilerServices.TaskAwaiter.HandleNonSuccessAndDebuggerNotification(Task task)
+   en Microsoft.VisualStudio.Setup.ChannelDownloader.<GetLatestChannelManifestAsync>d__7.MoveNext()
+--- Fin del seguimiento de la pila de la ubicación anterior donde se produjo la excepción ---
+   en System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw()
+   en System.Runtime.CompilerServices.TaskAwaiter.ThrowForNonSuccess(Task task)
+   en System.Runtime.CompilerServices.TaskAwaiter.HandleNonSuccessAndDebuggerNotification(Task task)
+   en Microsoft.VisualStudio.Setup.ChannelManager.<UpdateChannelManifestAsync>d__70.MoveNext()
+Warning: [45b0:0016][2025-06-25T19:10:12] Se canceló una tarea.
+Warning: [45b0:0016][2025-06-25T19:10:12] Didn't find any channel feed.
+[45b0:0019][2025-06-25T19:10:12] WebClient error 'RequestCanceled' with 'https://aka.ms/vs/channels' - ExecuteWithRetryAsync failed along with a cancellation request
+Warning: [45b0:0019][2025-06-25T19:10:12] Failed to get the HttpWebResponse while invoking a HEAD request against https://aka.ms/vs/channels:System.OperationCanceledException: Operación cancelada.
+   en System.Threading.CancellationToken.ThrowOperationCanceledException()
+   en System.Threading.CancellationToken.ThrowIfCancellationRequested()
+   en Microsoft.VisualStudio.Setup.Download.WebRequestService.<>c__DisplayClass9_0.<ExecuteWithRetryAsync>b__0(Object _)
+   en System.Threading.Tasks.Task`1.InnerInvoke()
+   en System.Threading.Tasks.Task.Execute()
+--- Fin del seguimiento de la pila de la ubicación anterior donde se produjo la excepción ---
+   en System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw()
+   en System.Runtime.CompilerServices.TaskAwaiter.HandleNonSuccessAndDebuggerNotification(Task task)
+   en Microsoft.VisualStudio.Setup.Download.DownloadManagerAuthenticationProxy.<MungeUriAsync>d__28.MoveNext()
+[45b0:0019][2025-06-25T19:10:12] Download requested: https://aka.ms/vs/channels
+Warning: [45b0:0005][2025-06-25T19:10:12] Failed to download channels file from https://aka.ms/vs/channels: Se canceló una tarea.
+[45b0:001b][2025-06-25T19:10:12] WebClient error 'RequestCanceled' with 'https://aka.ms/vs/installer/latest/feed' - ExecuteWithRetryAsync failed along with a cancellation request
+Warning: [45b0:001b][2025-06-25T19:10:12] Failed to get the HttpWebResponse while invoking a HEAD request against https://aka.ms/vs/installer/latest/feed:System.OperationCanceledException: Operación cancelada.
+   en System.Threading.CancellationToken.ThrowOperationCanceledException()
+   en System.Threading.CancellationToken.ThrowIfCancellationRequested()
+   en Microsoft.VisualStudio.Setup.Download.WebRequestService.<>c__DisplayClass9_0.<ExecuteWithRetryAsync>b__0(Object _)
+   en System.Threading.Tasks.Task`1.InnerInvoke()
+   en System.Threading.Tasks.Task.Execute()
+--- Fin del seguimiento de la pila de la ubicación anterior donde se produjo la excepción ---
+   en System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw()
+   en System.Runtime.CompilerServices.TaskAwaiter.HandleNonSuccessAndDebuggerNotification(Task task)
+   en Microsoft.VisualStudio.Setup.Download.DownloadManagerAuthenticationProxy.<MungeUriAsync>d__28.MoveNext()
+[45b0:001b][2025-06-25T19:10:12] Download requested: https://aka.ms/vs/installer/latest/feed
+Warning: [45b0:001b][2025-06-25T19:10:12] Failed to update the latest installer feed Se canceló una tarea.
+Warning: [45b0:001b][2025-06-25T19:10:12] Didn't find any channel feed.
+[45b0:0004][2025-06-25T19:10:12] Status changed to NoUpdate
+Warning: [45b0:0011][2025-06-25T19:10:12] Didn't find any channel feed.
+Warning: [45b0:0008][2025-06-25T19:10:12] Didn't find any channel feed.
+[45b0:0003][2025-06-25T19:10:13] Authenticode verification returned 0x00000000 for path: C:\Program Files (x86)\Microsoft Visual Studio\Installer\setup.exe.

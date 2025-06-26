@@ -1,7 +1,31 @@
+Bypass para activar el entorno:
+
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 
 
 Activar el entorno:
 
 .\.venv\Scripts\Activate.ps1
+
+
+commit, push y redeploy en Render:
+
+
+# 1. Asegúrate de estar en la carpeta del proyecto y con el virtualenv activo
+cd C:\Users\Administrator\morphea-backend
+# (si no estás en el venv)
+.\.venv\Scripts\Activate.ps1
+
+# 2. Verifica estado de Git
+git status
+
+# 3. Agrega los cambios
+git add .
+
+# 4. Crea un commit descriptivo
+git commit -m "feat: actualizar main.py con rutas de agentes y RAG de Freud"
+
+# 5. Sube al repositorio remoto
+git push origin main
+
 
