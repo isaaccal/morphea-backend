@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 from openai import OpenAI as OpenAIClient
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 
 # — Import de los agentes —
 from agents.freud_agent     import interpret_freud
@@ -65,12 +65,12 @@ app.include_router(auth_router)
 # ─── Schemas ──────────────────────────────────────────────────────────────
 class DreamRequest(BaseModel):
     name: str
-    email: str
+    email: EmailStr
     message: str
     language: str = "es"
 
 class SuscripcionUpdate(BaseModel):
-    email: str
+    email: EmailStr
     max_dreams: int
     expires_in_days: Optional[int] = None
 
@@ -171,65 +171,62 @@ def interpretar_sueno(
 
     return {"status": "success", "message": "Interpretación enviada"}
 
-# ─── Endpoint /interpretar/freud ──────────────────────────────────────────
+# ─── Endpoint /interpretar/freud ────────────────────────────────────────────
 @app.post("/interpretar/freud")
-async def interpretar_freud_endpoint(
+async def interpretar_freud_route(
     data: DreamRequest,
     current_email: str = Depends(get_current_email),
 ):
     if not data.message.strip():
         raise HTTPException(status_code=400, detail="El texto del sueño no puede estar vacío.")
-    interpretation = interpret_freud(data.message)
-    return {"agent": "freud", "interpretation": interpretation}
+    result = interpret_freud(data.message, language=data.language)
+    return result
 
-# ─── Endpoint /interpretar/jung ───────────────────────────────────────────
+# ─── Endpoint /interpretar/jung ────────────────────────────────────────────
 @app.post("/interpretar/jung")
-async def interpretar_jung_endpoint(
+async def interpretar_jung_route(
     data: DreamRequest,
     current_email: str = Depends(get_current_email),
 ):
     if not data.message.strip():
         raise HTTPException(status_code=400, detail="El texto del sueño no puede estar vacío.")
-    interpretation = interpret_jung(data.message)
-    return {"agent": "jung", "interpretation": interpretation}
+    return interpret_jung(data.message, language=data.language)
 
-# ─── Endpoint /interpretar/adler ──────────────────────────────────────────
+# ─── Endpoint /interpretar/adler ────────────────────────────────────────────
 @app.post("/interpretar/adler")
-async def interpretar_adler_endpoint(
+async def interpretar_adler_route(
     data: DreamRequest,
     current_email: str = Depends(get_current_email),
 ):
     if not data.message.strip():
         raise HTTPException(status_code=400, detail="El texto del sueño no puede estar vacío.")
-    interpretation = interpret_adler(data.message)
-    return {"agent": "adler", "interpretation": interpretation}
+    return interpret_adler(data.message, language=data.language)
 
-# ─── Endpoint /interpretar/ensemble ───────────────────────────────────────
+# ─── Endpoint /interpretar/ensemble ────────────────────────────────────────
 @app.post("/interpretar/ensemble")
-async def interpretar_ensemble_endpoint(
+async def interpretar_ensemble_route(
     data: DreamRequest,
     current_email: str = Depends(get_current_email),
 ):
     if not data.message.strip():
         raise HTTPException(status_code=400, detail="El texto del sueño no puede estar vacío.")
-    interpretation = interpret_ensemble(data.message)
-    return {"agent": "ensemble", "interpretation": interpretation}
+    return interpret_ensemble(data.message, language=data.language)
 
-# ─── Suscripciones ───────────────────────────────────────────────────────
+# ─── Suscripciones ─────────────────────────────────────────────────────────
 @app.get("/suscripcion")
-def obtener_suscripcion(current_email: str = Depends(get_current_email)):
+def obtener_suscripcion(route_email: str = Depends(get_current_email)):
     with engine.connect() as conn:
         row = conn.execute(text("""
             SELECT s.dreams_allowed, s.dreams_used, s.expires_at, s.created_at
             FROM users u
             JOIN subscriptions s ON s.user_id = u.id
             WHERE u.email = :email
-        """), {"email": current_email}).fetchone()
+        """), {"email": route_email}).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Sin suscripción")
         allowed, used, expires_at, created_at = row
         return {
-            "email": current_email,
+            "email": route_email,
             "max_dreams": allowed,
             "dreams_used": used,
             "remaining": allowed - used,

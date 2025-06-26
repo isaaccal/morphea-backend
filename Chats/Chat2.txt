@@ -1,0 +1,173 @@
+Muy bien, vamos a añadir el endpoint **ensemble** paso a paso, como si no supieras nada de programación. Al final tendrás todo el código completo para pegar en tus archivos.
+
+---
+
+## 1. Crear el prompt maestro de síntesis
+
+1. **Local**: En tu carpeta del proyecto `morphea-backend`, entra en `prompts/`.
+
+2. Crea un nuevo archivo llamado
+
+   ```
+   prompts/ensemble_prompt.txt
+   ```
+
+3. Ábrelo con el Bloc de notas y pega este contenido EXACTO:
+
+   ```text
+   [SISTEMA]
+   Eres un orquestador sabio que toma tres interpretaciones de sueños (freudiana, junguiana y adleriana) y las combina en una única respuesta clara y enriquecedora. Tu tarea es:
+   1. Leer cada interpretación parcial.  
+   2. Extraer los puntos en común y los matices relevantes.  
+   3. Redactar un único texto que muestre “qué dice Freud”, “qué dice Jung” y “qué dice Adler” y termine con una conclusión integrada y una pregunta abierta.  
+   Usa lenguaje fluido y empatía.
+
+   [EJEMPLO]
+   **Input**:  
+   - Freud: “…interpretación freudiana…”  
+   - Jung:   “…interpretación junguiana…”  
+   - Adler:  “…interpretación adleriana…”
+
+   **Salida esperada**:  
+   “Freud señalaría X… Jung añadiría Y… Adler sugeriría Z… En conjunto, parece que tu sueño habla de A, B y C. ¿Cómo planeas integrar estos aprendizajes en tu vida?”  
+   ```
+
+4. **Guarda** y cierra.
+
+---
+
+## 2. Crear el orquestador de agentes
+
+1. **Local**: Entra en la carpeta `agents/`.
+
+2. Crea un archivo nuevo llamado
+
+   ```
+   agents/ensemble_agent.py
+   ```
+
+3. Ábrelo y pega esto:
+
+   ```python
+   # agents/ensemble_agent.py
+
+   import os
+   from langchain import PromptTemplate, LLMChain
+   from langchain_community.llms import OpenAI
+   from agents.freud_agent import interpret_freud
+   from agents.jung_agent  import interpret_jung
+   from agents.adler_agent import interpret_adler
+
+   # 1. Cargar prompt maestro de síntesis
+   prompt_path = os.path.join(os.path.dirname(__file__), "../prompts/ensemble_prompt.txt")
+   with open(prompt_path, encoding="utf-8") as f:
+       ensemble_prompt = f.read()
+
+   # 2. Crear plantilla
+   #    Aquí las variables serán freud, jung y adler
+   template = ensemble_prompt + "\n\n[Freud] \"{freud}\"\n[Jung] \"{jung}\"\n[Adler] \"{adler}\"\n\n[Ensemble]"
+   prompt_template = PromptTemplate(
+       input_variables=["freud", "jung", "adler"],
+       template=template
+   )
+
+   # 3. Configurar LLM
+   llm = OpenAI(
+       temperature=0.7,
+       openai_api_key=os.getenv("OPENAI_API_KEY")
+   )
+
+   # 4. Crear cadena
+   ensemble_chain = LLMChain(llm=llm, prompt=prompt_template)
+
+   def interpret_ensemble(dream: str) -> str:
+       """
+       Llama a los tres agentes, recoge sus salidas y genera la síntesis.
+       """
+       # Llamadas a cada agente
+       out_freud = interpret_freud(dream)
+       out_jung  = interpret_jung(dream)
+       out_adler = interpret_adler(dream)
+
+       # Llamada al sintetizador
+       return ensemble_chain.run(
+           freud=out_freud,
+           jung =out_jung,
+           adler=out_adler
+       )
+   ```
+
+4. **Guarda** y cierra.
+
+---
+
+## 3. Actualizar `main.py`
+
+1. **Local**: Abre tu `morphea-backend/main.py` en el Bloc de notas.
+
+2. Justo después de los imports de los otros agentes, añade:
+
+   ```python
+   from agents.ensemble_agent import interpret_ensemble
+   ```
+
+3. Al final de los endpoints (antes de la sección de suscripciones), pega este bloque:
+
+   ```python
+   # ─── Endpoint /interpretar/ensemble ───────────────────────────────────────
+   @app.post("/interpretar/ensemble")
+   async def interpretar_ensemble_endpoint(
+       data: DreamRequest,
+       current_email: str = Depends(get_current_email),
+   ):
+       if not data.message.strip():
+           raise HTTPException(status_code=400, detail="El texto del sueño no puede estar vacío.")
+       interpretation = interpret_ensemble(data.message)
+       return {"agent": "ensemble", "interpretation": interpretation}
+   ```
+
+4. **Guarda** y cierra.
+
+---
+
+## 4. Versionar y desplegar
+
+1. En PowerShell, en la carpeta `morphea-backend`, ejecuta:
+
+   ```bash
+   git add prompts/ensemble_prompt.txt agents/ensemble_agent.py main.py
+   git commit -m "Agrega agente ensemble: prompt, módulo y endpoint"
+   git push origin main
+   ```
+2. Espera a que Render termine el despliegue automático.
+
+---
+
+## 5. Probar el nuevo endpoint
+
+Igual que con los demás, crea rápidamente un **test\_ensemble.py** (o modifica uno existente):
+
+```python
+import requests, json
+
+TOKEN = "TU_JWT_AQUÍ"
+URL   = "https://morphea-backend.onrender.com/interpretar/ensemble"
+HEADERS = {"Authorization":f"Bearer {TOKEN}", "Content-Type":"application/json"}
+payload = {"name":"Prueba","email":"prueba@ejemplo.com",
+           "message":"Soñé que caía al vacío y no podía despertar","language":"es"}
+
+r = requests.post(URL, headers=HEADERS, json=payload)
+print(r.status_code, r.json())
+```
+
+Ejecuta:
+
+```bash
+python test_ensemble.py
+```
+
+Si ves código **200** y un JSON con `"agent": "ensemble"`, ¡todo está funcionando!
+
+---
+
+Con esto tienes tu **endpoint combinado** listo y probado.

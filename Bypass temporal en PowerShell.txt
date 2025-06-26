@@ -1,0 +1,7 @@
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+
+
+Activar el entorno:
+
+.\.venv\Scripts\Activate.ps1
+
