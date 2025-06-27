@@ -1,46 +1,81 @@
 # agents/ensemble_agent.py
 
 import os
-from langchain import PromptTemplate, LLMChain
-from langchain_community.llms import OpenAI
-from agents.freud_agent import interpret_freud
-from agents.jung_agent  import interpret_jung
-from agents.adler_agent import interpret_adler
+from dotenv import load_dotenv
+load_dotenv()
 
-# 1. Cargar prompt maestro de síntesis
-prompt_path = os.path.join(os.path.dirname(__file__), "../prompts/ensemble_prompt.txt")
-with open(prompt_path, encoding="utf-8") as f:
-    ensemble_prompt = f.read()
+from typing import Dict, List
+from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_community.vectorstores import PGVector
+from langchain_openai.chat_models import ChatOpenAI
+from langchain.schema import Document, HumanMessage
 
-# 2. Crear plantilla
-#    Aquí las variables serán freud, jung y adler
-template = ensemble_prompt + "\n\n[Freud] \"{freud}\"\n[Jung] \"{jung}\"\n[Adler] \"{adler}\"\n\n[Ensemble]"
-prompt_template = PromptTemplate(
-    input_variables=["freud", "jung", "adler"],
-    template=template
-)
+# --- Configuración de Vector Stores para cada autor ---
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise ValueError("Falta DATABASE_URL en el .env")
 
-# 3. Configurar LLM
-llm = OpenAI(
-    temperature=0.7,
-    openai_api_key=os.getenv("OPENAI_API_KEY")
-)
+embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
 
-# 4. Crear cadena
-ensemble_chain = LLMChain(llm=llm, prompt=prompt_template)
-
-def interpret_ensemble(dream: str) -> str:
-    """
-    Llama a los tres agentes, recoge sus salidas y genera la síntesis.
-    """
-    # Llamadas a cada agente
-    out_freud = interpret_freud(dream)
-    out_jung  = interpret_jung(dream)
-    out_adler = interpret_adler(dream)
-
-    # Llamada al sintetizador
-    return ensemble_chain.run(
-        freud=out_freud,
-        jung =out_jung,
-        adler=out_adler
+def make_retriever(collection_name: str):
+    store = PGVector(
+        collection_name=collection_name,
+        connection_string=DATABASE_URL,
+        embedding_function=embeddings,
     )
+    return store.as_retriever(search_kwargs={"k": 2})
+
+retrievers = {
+    "Freud": make_retriever("freud_dreams"),
+    "Jung":  make_retriever("jung_dreams"),
+    "Adler": make_retriever("adler_dreams"),
+}
+
+# --- Plantilla de prompt para el ensemble ---
+ENSPROMPT = """
+Interpreta este sueño integrando teorías de psicología profunda:
+
+Conceptos freudianos:
+{ctx_freud}
+
+Conceptos junguianos:
+{ctx_jung}
+
+Conceptos adlerianos:
+{ctx_adler}
+
+Sueño del usuario:
+\"\"\"
+{dream}
+\"\"\"
+
+Por favor, responde en tercera persona, de forma clara y unificada, 
+usando las ideas de cada autor sin citar páginas ni fingir ser ellos.
+"""
+
+def interpret_ensemble(dream_text: str, language: str = "es") -> Dict:
+    # 1) Recuperar los fragmentos más relevantes de cada colección
+    contexts: Dict[str, str] = {}
+    for author, retriever in retrievers.items():
+        docs: List[Document] = retriever.get_relevant_documents(dream_text)
+        contexts[author] = "\n\n".join(d.page_content for d in docs)
+
+    # 2) Formatear el prompt
+    prompt = ENSPROMPT.format(
+        ctx_freud=contexts["Freud"],
+        ctx_jung=contexts["Jung"],
+        ctx_adler=contexts["Adler"],
+        dream=dream_text
+    )
+
+    # 3) Llamar al LLM
+    llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0.7)
+    response = llm.chat([HumanMessage(content=prompt)])
+    interpretation = response.content.strip()
+
+    # 4) Devolver el formato estándar
+    return {
+        "agent": "ensemble",
+        "timestamp": None,
+        "text": interpretation,
+    }
