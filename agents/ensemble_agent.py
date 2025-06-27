@@ -10,7 +10,7 @@ from langchain_community.vectorstores import PGVector
 from langchain_openai.chat_models import ChatOpenAI
 from langchain.schema import Document, HumanMessage
 
-# --- Configuración de Vector Stores para cada autor ---
+# --- Configuración de RAG para cada autor ---
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise ValueError("Falta DATABASE_URL en el .env")
@@ -68,12 +68,14 @@ def interpret_ensemble(dream_text: str, language: str = "es") -> Dict:
         dream=dream_text
     )
 
-    # 3) Llamar al LLM
+    # 3) Llamar al LLM usando generate (no existe chat())
     llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0.7)
-    response = llm.chat([HumanMessage(content=prompt)])
-    interpretation = response.content.strip()
+    # generate() recibe una lista de conversaciones, cada una lista de mensajes
+    result = llm.generate([[HumanMessage(content=prompt)]])
 
-    # 4) Devolver el formato estándar
+    # 4) Extraer la respuesta
+    interpretation = result.generations[0][0].message.content.strip()
+
     return {
         "agent": "ensemble",
         "timestamp": None,
