@@ -1,6 +1,6 @@
 import os
 from datetime import datetime, timedelta
-from typing import Optional, Dict
+from typing import Optional, Dict, Any
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -25,6 +25,7 @@ from agents.freud_agent     import interpret_freud
 from agents.jung_agent      import interpret_jung
 from agents.adler_agent     import interpret_adler
 from agents.ensemble_agent  import interpret_ensemble
+from agents.formatter_agent import format_readable
 
 # ─── App & CORS ───────────────────────────────────────────────────────────
 app = FastAPI(title="Morphea API", version="0.1.0")
@@ -75,7 +76,7 @@ class SuscripcionUpdate(BaseModel):
     max_dreams: int
     expires_in_days: Optional[int] = None
 
-# ─── Endpoint /interpretar (genérico) ─────────────────────────────────────
+# ─── Endpoint genérico /interpretar ────────────────────────────────────────
 @app.post("/interpretar")
 def interpretar_sueno(
     data: DreamRequest,
@@ -83,71 +84,69 @@ def interpretar_sueno(
 ):
     client = OpenAIClient(api_key=OPENAI_API_KEY)
 
-    # 1) Validar suscripción y saldo de sueños
+    # 1) Verificar suscripción
     with engine.connect() as conn:
         sub = conn.execute(text(
             "SELECT s.user_id, s.dreams_allowed, s.dreams_used "
             "FROM users u JOIN subscriptions s ON s.user_id = u.id "
             "WHERE u.email = :email"
         ), {"email": current_email}).fetchone()
-
         if not sub:
             raise HTTPException(status_code=403, detail="No tienes una suscripción activa")
-
-        user_id, dreams_allowed, dreams_used = sub
-        if dreams_used >= dreams_allowed:
+        user_id, allowed, used = sub
+        if used >= allowed:
             return {"status": "limit-reached", "message": "Límite alcanzado, actualiza tu plan"}
 
-    # 2) Definir mensajes según idioma
+    # 2) Mensajes según idioma
     if data.language.lower().startswith("en"):
-        system  = "You are an expert in professional dream interpretation based on psychology."
-        user    = f"The user {data.name} dreamed: {data.message}"
-        subject = "Your dream interpretation from Morphea"
-        greet, intro, footer, sign = (
+        system = "You are an expert dream interpreter based on psychology."
+        user_msg = f"{data.name} dreamed: {data.message}"
+        subject, greet, intro, footer, sign = (
+            "Your dream interpretation from Morphea",
             f"Hello {data.name},",
-            "Thank you for trusting Morphea. Based on your dream:",
-            "You can submit more dreams anytime.",
-            "— Morphea Team",
+            "Here is your interpretation:",
+            "Feel free to send another dream.",
+            "— Morphea Team"
         )
     else:
-        system  = "Eres un experto en interpretación profesional de sueños según la psicología."
-        user    = f"El usuario {data.name} soñó:\n{data.message}"
-        subject = "Tu interpretación de sueño con Morphea"
-        greet, intro, footer, sign = (
+        system = "Eres un experto en interpretación de sueños según la psicología."
+        user_msg = f"El usuario {data.name} soñó:\n{data.message}"
+        subject, greet, intro, footer, sign = (
+            "Tu interpretación de sueño con Morphea",
             f"Hola {data.name},",
-            "Gracias por confiar en Morphea. Esto interpretó nuestra IA:",
+            "Esto interpretó nuestra IA:",
             "Si deseas, envía otro sueño.",
-            "— Equipo Morphea",
+            "— Equipo Morphea"
         )
 
     # 3) Llamada genérica a OpenAI
     resp = client.chat.completions.create(
         model="gpt-3.5-turbo",
-        messages=[{"role": "system", "content": system},
-                  {"role": "user",   "content": user}],
+        messages=[{"role":"system","content":system},
+                  {"role":"user","content":user_msg}],
         temperature=0.7,
     )
-    text_raw  = resp.choices[0].message.content
+    text_raw = resp.choices[0].message.content
     text_html = text_raw.replace("\n", "<br>")
 
-    # 4) Guardar sueño y actualizar contador
+    # 4) Guardar y actualizar contador
     with engine.begin() as conn:
         conn.execute(text(
             "INSERT INTO dreams (user_id, name, email, message, language, interpretation) "
-            "VALUES (:uid, :name, :email, :message, :language, :interp)"
+            "VALUES (:uid,:name,:email,:msg,:lang,:interp)"
         ), {
             "uid": user_id,
             "name": data.name,
             "email": current_email,
-            "message": data.message,
-            "language": data.language,
+            "msg": data.message,
+            "lang": data.language,
             "interp": text_raw,
         })
         conn.execute(text(
             "UPDATE subscriptions SET dreams_used = dreams_used + 1 WHERE user_id = :uid"
         ), {"uid": user_id})
 
-    # 5) Enviar correo al usuario final
+    # 5) Envío de correo
     html = f"""
     <html><body style="font-family:sans-serif">
       <h2>{greet}</h2>
@@ -161,53 +160,63 @@ def interpretar_sueno(
     msg["From"]    = f"Morphea <{SMTP_USER}>"
     msg["To"]      = data.email
     msg.attach(MIMEText(html, "html"))
-
     with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
         server.starttls()
         server.login(SMTP_USER, SMTP_PASS)
         server.send_message(msg)
 
-    return {"status": "success", "message": "Interpretación enviada"}
+    return {"status":"success","message":"Interpretación enviada"}
 
-# ─── Endpoint /interpretar/freud ────────────────────────────────────────────
+# ─── Endpoints personalizados de interpretación ───────────────────────────
 @app.post("/interpretar/freud")
 async def interpretar_freud_route(
     data: DreamRequest,
     current_email: str = Depends(get_current_email),
 ):
     if not data.message.strip():
-        raise HTTPException(status_code=400, detail="El texto del sueño no puede estar vacío.")
+        raise HTTPException(400, "El texto del sueño no puede estar vacío.")
     return interpret_freud(data.message, language=data.language)
 
-# ─── Endpoint /interpretar/jung ────────────────────────────────────────────
 @app.post("/interpretar/jung")
 async def interpretar_jung_route(
     data: DreamRequest,
     current_email: str = Depends(get_current_email),
 ):
     if not data.message.strip():
-        raise HTTPException(status_code=400, detail="El texto del sueño no puede estar vacío.")
+        raise HTTPException(400, "El texto del sueño no puede estar vacío.")
     return interpret_jung(data.message, language=data.language)
 
-# ─── Endpoint /interpretar/adler ────────────────────────────────────────────
 @app.post("/interpretar/adler")
 async def interpretar_adler_route(
     data: DreamRequest,
     current_email: str = Depends(get_current_email),
 ):
     if not data.message.strip():
-        raise HTTPException(status_code=400, detail="El texto del sueño no puede estar vacío.")
+        raise HTTPException(400, "El texto del sueño no puede estar vacío.")
     return interpret_adler(data.message, language=data.language)
 
-# ─── Endpoint /interpretar/ensemble ────────────────────────────────────────
 @app.post("/interpretar/ensemble")
 async def interpretar_ensemble_route(
     data: DreamRequest,
     current_email: str = Depends(get_current_email),
 ):
     if not data.message.strip():
-        raise HTTPException(status_code=400, detail="El texto del sueño no puede estar vacío.")
+        raise HTTPException(400, "El texto del sueño no puede estar vacío.")
     return interpret_ensemble(data.message, language=data.language)
+
+@app.post("/interpretar/ensemble-readable")
+async def interpretar_readable_route(
+    data: DreamRequest,
+    current_email: str = Depends(get_current_email),
+):
+    if not data.message.strip():
+        raise HTTPException(400, "El texto del sueño no puede estar vacío.")
+    raw = interpret_ensemble(data.message, language=data.language)["text"]
+    friendly = format_readable(raw, language=data.language)["text"]
+    return {
+        "agent": "ensemble_readable",
+        "text": friendly,
+    }
 
 # ─── Suscripciones ─────────────────────────────────────────────────────────
 @app.get("/suscripcion")
@@ -239,7 +248,6 @@ def actualizar_suscripcion(data: SuscripcionUpdate):
             raise HTTPException(status_code=404, detail="Usuario no encontrado")
         user_id = u.id
         exp = (datetime.utcnow() + timedelta(days=data.expires_in_days)) if data.expires_in_days else None
-
         exists = conn.execute(text(
             "SELECT 1 FROM subscriptions WHERE user_id = :uid"
         ), {"uid": user_id}).fetchone()
@@ -253,5 +261,4 @@ def actualizar_suscripcion(data: SuscripcionUpdate):
                 "INSERT INTO subscriptions(user_id, dreams_allowed, dreams_used, expires_at) "
                 "VALUES (:uid, :max, 0, :exp)"
             ), {"uid": user_id, "max": data.max_dreams, "exp": exp})
-
     return {"message": "Suscripción actualizada correctamente"}
