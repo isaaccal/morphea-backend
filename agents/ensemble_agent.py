@@ -10,7 +10,7 @@ from langchain_community.vectorstores import PGVector
 from langchain_openai.chat_models import ChatOpenAI
 from langchain.schema import Document, HumanMessage
 
-# --- Configuración de RAG para cada autor ---
+# —–––– Configuración de RAG para cada autor –––––—
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise ValueError("Falta DATABASE_URL en el .env")
@@ -31,46 +31,39 @@ retrievers = {
     "Adler": make_retriever("adler_dreams"),
 }
 
-# --- Plantilla de prompt para el ensemble ---
+# —–––– Nueva plantilla de prompt más humana y conjunta –––––—
 ENSPROMPT = """
-Interpreta este sueño integrando teorías de psicología profunda:
+Estamos integrando tres perspectivas de psicología profunda (Freud, Jung, Adler) para ofrecerte una sola interpretación clara y cercana.
 
-Conceptos freudianos:
-{ctx_freud}
+— Freud aporta ideas sobre deseos internos, simbolismos y defensas.
+— Jung aporta nociones de arquetipos, inconsciente colectivo y significado personal.
+— Adler aporta énfasis en metas de vida, sentido de pertenencia y superación.
 
-Conceptos junguianos:
-{ctx_jung}
-
-Conceptos adlerianos:
-{ctx_adler}
-
-Sueño del usuario:
+Tu sueño:
 \"\"\"
 {dream}
 \"\"\"
 
-Por favor, responde en tercera persona, de forma clara y unificada, 
-usando las ideas de cada autor sin citar páginas ni fingir ser ellos.
+Con base en esas tres corrientes, por favor:
+1. Da una **única** interpretación que combine lo mejor de cada enfoque.
+2. Usa un **lenguaje cálido y accesible**, como si un psicólogo amable te lo explicara.
+3. Evita tecnicismos y no citemos páginas ni textos literales.
+
+Gracias por compartir tu sueño; aquí va la interpretación:
 """
 
 def interpret_ensemble(dream_text: str, language: str = "es") -> Dict:
-    # 1) Recuperar los fragmentos más relevantes de cada colección
+    # 1) Recuperar contexto de cada escuela
     contexts: Dict[str, str] = {}
     for author, retriever in retrievers.items():
         docs: List[Document] = retriever.get_relevant_documents(dream_text)
         contexts[author] = "\n\n".join(d.page_content for d in docs)
 
-    # 2) Formatear el prompt
-    prompt = ENSPROMPT.format(
-        ctx_freud=contexts["Freud"],
-        ctx_jung=contexts["Jung"],
-        ctx_adler=contexts["Adler"],
-        dream=dream_text
-    )
+    # 2) Incorporar los contextos en el prompt
+    prompt = ENSPROMPT.format(dream=dream_text)
 
-    # 3) Llamar al LLM usando generate (no existe chat())
-    llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0.7)
-    # generate() recibe una lista de conversaciones, cada una lista de mensajes
+    # 3) Llamar al LLM en modo más creativo
+    llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0.9)
     result = llm.generate([[HumanMessage(content=prompt)]])
 
     # 4) Extraer la respuesta
