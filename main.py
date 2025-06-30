@@ -27,6 +27,11 @@ from agents.adler_agent     import interpret_adler
 from agents.ensemble_agent  import interpret_ensemble
 from agents.formatter_agent import format_readable
 
+# — Import Prometheus metrics —
+from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+from starlette.requests import Request
+from starlette.responses import Response
+
 # ─── App & CORS ───────────────────────────────────────────────────────────
 app = FastAPI(title="Morphea API", version="0.1.0")
 app.add_middleware(
@@ -37,6 +42,32 @@ app.add_middleware(
     allow_credentials=True,
 )
 
+# ─── Prometheus metrics ────────────────────────────────────────────────────
+REQUEST_COUNT = Counter(
+    "morphea_request_count",
+    "Número de peticiones recibidas",
+    ["method", "endpoint", "http_status"],
+)
+REQUEST_LATENCY = Histogram(
+    "morphea_request_latency_seconds",
+    "Latencia de las peticiones HTTP",
+    ["method", "endpoint"],
+)
+
+@app.middleware("http")
+async def metrics_middleware(request: Request, call_next):
+    method = request.method
+    path = request.url.path
+    with REQUEST_LATENCY.labels(method=method, endpoint=path).time():
+        response = await call_next(request)
+    REQUEST_COUNT.labels(
+        method=method,
+        endpoint=path,
+        http_status=response.status_code,
+    ).inc()
+    return response
+
+# Create tables
 Base.metadata.create_all(bind=engine)
 
 # ─── Entorno ──────────────────────────────────────────────────────────────
@@ -170,8 +201,7 @@ def interpretar_sueno(
 # ─── Endpoints personalizados de interpretación ───────────────────────────
 @app.post("/interpretar/freud")
 async def interpretar_freud_route(
-    data: DreamRequest,
-    current_email: str = Depends(get_current_email),
+    data: DreamRequest, current_email: str = Depends(get_current_email)
 ):
     if not data.message.strip():
         raise HTTPException(400, "El texto del sueño no puede estar vacío.")
@@ -179,8 +209,7 @@ async def interpretar_freud_route(
 
 @app.post("/interpretar/jung")
 async def interpretar_jung_route(
-    data: DreamRequest,
-    current_email: str = Depends(get_current_email),
+    data: DreamRequest, current_email: str = Depends(get_current_email)
 ):
     if not data.message.strip():
         raise HTTPException(400, "El texto del sueño no puede estar vacío.")
@@ -188,8 +217,7 @@ async def interpretar_jung_route(
 
 @app.post("/interpretar/adler")
 async def interpretar_adler_route(
-    data: DreamRequest,
-    current_email: str = Depends(get_current_email),
+    data: DreamRequest, current_email: str = Depends(get_current_email)
 ):
     if not data.message.strip():
         raise HTTPException(400, "El texto del sueño no puede estar vacío.")
@@ -197,8 +225,7 @@ async def interpretar_adler_route(
 
 @app.post("/interpretar/ensemble")
 async def interpretar_ensemble_route(
-    data: DreamRequest,
-    current_email: str = Depends(get_current_email),
+    data: DreamRequest, current_email: str = Depends(get_current_email)
 ):
     if not data.message.strip():
         raise HTTPException(400, "El texto del sueño no puede estar vacío.")
@@ -206,8 +233,7 @@ async def interpretar_ensemble_route(
 
 @app.post("/interpretar/ensemble-readable")
 async def interpretar_readable_route(
-    data: DreamRequest,
-    current_email: str = Depends(get_current_email),
+    data: DreamRequest, current_email: str = Depends(get_current_email)
 ):
     if not data.message.strip():
         raise HTTPException(400, "El texto del sueño no puede estar vacío.")
@@ -217,6 +243,15 @@ async def interpretar_readable_route(
         "agent": "ensemble_readable",
         "text": friendly,
     }
+
+# ─── Endpoint de métricas Prometheus ────────────────────────────────────────
+@app.get("/metrics")
+def metrics():
+    """
+    Métricas Prometheus en texto plano.
+    """
+    data = generate_latest()
+    return Response(content=data, media_type=CONTENT_TYPE_LATEST)
 
 # ─── Suscripciones ─────────────────────────────────────────────────────────
 @app.get("/suscripcion")

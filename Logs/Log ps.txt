@@ -1,0 +1,32 @@
+PS C:\Users\Administrator\morphea-backend> Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+
+Cambio de directiva de ejecución
+La directiva de ejecución te ayuda a protegerte de scripts en los que no confías. Si cambias dicha directiva, podrías
+exponerte a los riesgos de seguridad descritos en el tema de la Ayuda about_Execution_Policies en
+https:/go.microsoft.com/fwlink/?LinkID=135170. ¿Quieres cambiar la directiva de ejecución?
+[S] Sí  [O] Sí a todo  [N] No  [T] No a todo  [U] Suspender  [?] Ayuda (el valor predeterminado es "N"): s
+PS C:\Users\Administrator\morphea-backend> .\.venv\Scripts\Activate.ps1
+(.venv) PS C:\Users\Administrator\morphea-backend> uvicorn main:app --host 0.0.0.0 --port 8000
+C:\Users\Administrator\morphea-backend\agents\freud_agent.py:33: LangChainDeprecationWarning: The class `OpenAIEmbeddings` was deprecated in LangChain 0.0.9 and will be removed in 1.0. An updated version of the class exists in the :class:`~langchain-openai package and should be used instead. To use it run `pip install -U :class:`~langchain-openai` and import as `from :class:`~langchain_openai import OpenAIEmbeddings``.
+  embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+C:\Users\Administrator\morphea-backend\agents\freud_agent.py:34: LangChainPendingDeprecationWarning: This class is pending deprecation and may be removed in a future version. You can swap to using the `PGVector` implementation in `langchain_postgres`. Please read the guidelines in the doc-string of this class to follow prior to migrating as there are some differences between the implementations. See <https://github.com/langchain-ai/langchain-postgres> for details about the new implementation.
+  vector_store = PGVector(
+C:\Users\Administrator\morphea-backend\agents\freud_agent.py:34: LangChainPendingDeprecationWarning: Please use JSONB instead of JSON for metadata. This change will allow for more efficient querying that involves filtering based on metadata. Please note that filtering operators have been changed when using JSONB metadata to be prefixed with a $ sign to avoid name collisions with columns. If you're using an existing database, you will need to create a db migration for your metadata column to be JSONB and update your queries to use the new operators.
+  vector_store = PGVector(
+C:\users\administrator\morphea-backend\.venv\Lib\site-packages\langchain\__init__.py:30: UserWarning: Importing PromptTemplate from langchain root module is no longer supported. Please use langchain_core.prompts.PromptTemplate instead.
+  warnings.warn(
+C:\users\administrator\morphea-backend\.venv\Lib\site-packages\langchain\__init__.py:30: UserWarning: Importing LLMChain from langchain root module is no longer supported. Please use langchain.chains.LLMChain instead.
+  warnings.warn(
+C:\Users\Administrator\morphea-backend\agents\jung_agent.py:17: LangChainDeprecationWarning: The class `OpenAI` was deprecated in LangChain 0.0.10 and will be removed in 1.0. An updated version of the class exists in the :class:`~langchain-openai package and should be used instead. To use it run `pip install -U :class:`~langchain-openai` and import as `from :class:`~langchain_openai import OpenAI``.
+  llm = OpenAI(
+C:\Users\Administrator\morphea-backend\agents\jung_agent.py:23: LangChainDeprecationWarning: The class `LLMChain` was deprecated in LangChain 0.1.17 and will be removed in 1.0. Use :meth:`~RunnableSequence, e.g., `prompt | llm`` instead.
+  jung_chain = LLMChain(llm=llm, prompt=prompt_template)
+C:\users\administrator\morphea-backend\.venv\Lib\site-packages\langchain\__init__.py:30: UserWarning: Importing PromptTemplate from langchain root module is no longer supported. Please use langchain_core.prompts.PromptTemplate instead.
+  warnings.warn(
+C:\users\administrator\morphea-backend\.venv\Lib\site-packages\langchain\__init__.py:30: UserWarning: Importing LLMChain from langchain root module is no longer supported. Please use langchain.chains.LLMChain instead.
+  warnings.warn(
+C:\Users\Administrator\morphea-backend\agents\ensemble_agent.py:21: LangChainPendingDeprecationWarning: Please use JSONB instead of JSON for metadata. This change will allow for more efficient querying that involves filtering based on metadata. Please note that filtering operators have been changed when using JSONB metadata to be prefixed with a $ sign to avoid name collisions with columns. If you're using an existing database, you will need to create a db migration for your metadata column to be JSONB and update your queries to use the new operators.
+  store = PGVector(
+
+
+
