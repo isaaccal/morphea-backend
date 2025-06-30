@@ -1,20 +1,36 @@
+# render.yaml
+
 services:
-  - type: web
+  - type: web_service
     name: morphea-backend
     env: python
     plan: free
-    buildCommand: ""
-    startCommand: uvicorn main:app --host 0.0.0.0 --port 10000
+    region: oregon
+    autoDeploy: true
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+
+    # Al usar plan free, Render dormirá tras 15 min sin tráfico
+    # (Auto-Sleep está activado por defecto en Free tier)
+
+    # Si migras a plan de pago, estas líneas permitirán autoscaling:
+    autoscale:
+      minInstances: 0
+      maxInstances: 2
+      cpuThresholdPercent: 60
+
     envVars:
       - key: OPENAI_API_KEY
-        sync: false
       - key: EMAIL_FROM
-        sync: false
       - key: SMTP_USER
-        sync: false
       - key: SMTP_PASS
-        sync: false
       - key: SMTP_SERVER
-        sync: false
       - key: SMTP_PORT
-        sync: false
+      # Puedes añadir aquí DATABASE_URL, STRIPE_SECRET_KEY, etc.
+
+jobs:
+  - type: cron_job
+    name: vacuum-job
+    schedule: "0 3 * * *"   # Cada día a las 03:00 UTC
+    command: |
+      psql $DATABASE_URL -c "VACUUM ANALYZE;"
