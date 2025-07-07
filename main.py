@@ -34,10 +34,17 @@ from starlette.responses import Response
 
 # ─── App & CORS ───────────────────────────────────────────────────────────
 app = FastAPI(title="Morphea API", version="0.1.0")
+
+# Solo permitimos morphea.ai (prod) y localhost (dev)
+origins = [
+    "https://morphea.ai",
+    "http://localhost:3000",  # opcional: pruebas locales
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
+    allow_origins=origins,
+    allow_methods=["POST", "OPTIONS"],
     allow_headers=["*"],
     allow_credentials=True,
 )
@@ -198,7 +205,7 @@ def interpretar_sueno(
 
     return {"status":"success","message":"Interpretación enviada"}
 
-# ─── Endpoints personalizados de interpretación ───────────────────────────
+# ─── Endpoints especializados ─────────────────────────────────────────────
 @app.post("/interpretar/freud")
 async def interpretar_freud_route(
     data: DreamRequest, current_email: str = Depends(get_current_email)
@@ -244,16 +251,13 @@ async def interpretar_readable_route(
         "text": friendly,
     }
 
-# ─── Endpoint de métricas Prometheus ────────────────────────────────────────
+# ─── Métricas Prometheus ─────────────────────────────────────────────────
 @app.get("/metrics")
 def metrics():
-    """
-    Métricas Prometheus en texto plano.
-    """
     data = generate_latest()
     return Response(content=data, media_type=CONTENT_TYPE_LATEST)
 
-# ─── Suscripciones ─────────────────────────────────────────────────────────
+# ─── Suscripciones ───────────────────────────────────────────────────────
 @app.get("/suscripcion")
 def obtener_suscripcion(route_email: str = Depends(get_current_email)):
     with engine.connect() as conn:
