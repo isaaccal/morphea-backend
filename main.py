@@ -5,79 +5,43 @@ from typing import Optional, Dict, Any
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, Depends, HTTPException
+# ─── FastAPI & dependencias ───────────────────────────────────────────────
+from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import JSONResponse
 from jose import jwt, JWTError
 from openai import OpenAI as OpenAIClient
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import text
 from database import engine, Base
 
+# ─── Stripe ───────────────────────────────────────────────────────────────
+import stripe
+
+# ─── SMTP / correo ────────────────────────────────────────────────────────
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
+# ─── Rutas de autenticación ───────────────────────────────────────────────
 from auth import router as auth_router
 
-# — Import de los agentes —
+# ─── Agentes IA ───────────────────────────────────────────────────────────
 from agents.freud_agent     import interpret_freud
 from agents.jung_agent      import interpret_jung
 from agents.adler_agent     import interpret_adler
 from agents.ensemble_agent  import interpret_ensemble
 from agents.formatter_agent import format_readable
 
-# — Import Prometheus metrics —
+# ─── Prometheus ───────────────────────────────────────────────────────────
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
-from starlette.requests import Request
+from starlette.requests import Request as StarletteRequest
 from starlette.responses import Response
 
-# ─── App & CORS ───────────────────────────────────────────────────────────
-app = FastAPI(title="Morphea API", version="0.1.0")
-
-# Solo permitimos morphea.ai (prod) y localhost (dev)
-origins = [
-    "https://morphea.ai",
-    "http://localhost:3000",  # opcional: pruebas locales
-]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_methods=["POST", "OPTIONS"],
-    allow_headers=["*"],
-    allow_credentials=True,
-)
-
-# ─── Prometheus metrics ────────────────────────────────────────────────────
-REQUEST_COUNT = Counter(
-    "morphea_request_count",
-    "Número de peticiones recibidas",
-    ["method", "endpoint", "http_status"],
-)
-REQUEST_LATENCY = Histogram(
-    "morphea_request_latency_seconds",
-    "Latencia de las peticiones HTTP",
-    ["method", "endpoint"],
-)
-
-@app.middleware("http")
-async def metrics_middleware(request: Request, call_next):
-    method = request.method
-    path = request.url.path
-    with REQUEST_LATENCY.labels(method=method, endpoint=path).time():
-        response = await call_next(request)
-    REQUEST_COUNT.labels(
-        method=method,
-        endpoint=path,
-        http_status=response.status_code,
-    ).inc()
-    return response
-
-# Create tables
-Base.metadata.create_all(bind=engine)
-
-# ─── Entorno ──────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────
+#                         CONFIGURACIÓN DE ENTORNO
+# ──────────────────────────────────────────────────────────────────────────
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     raise RuntimeError("Debes definir OPENAI_API_KEY")
@@ -90,7 +54,68 @@ SMTP_PORT   = int(os.getenv("SMTP_PORT", 587))
 SMTP_USER   = os.getenv("SMTP_USER")
 SMTP_PASS   = os.getenv("SMTP_PASS")
 
-# ─── Seguridad ────────────────────────────────────────────────────────────
+# ---------- Stripe ----------
+STRIPE_SECRET_KEY       = os.getenv("STRIPE_SECRET_KEY")
+STRIPE_WEBHOOK_SECRET   = os.getenv("STRIPE_WEBHOOK_SECRET")
+FRONTEND_URL            = os.getenv("FRONTEND_URL", "https://morphea.ai")
+
+stripe.api_key = STRIPE_SECRET_KEY
+
+# Mapeo Price-ID → sueños permitidos
+PRICE_MAP = {
+    "price_1RideaP4qwLeB58n0aI63JCJ": 5,
+    "price_1RidiwP4qwLeB58nx0JVN979": 10,
+    "price_1RidjkP4qwLeB58nwpiGdS0Q": 20,
+}
+
+# ──────────────────────────────────────────────────────────────────────────
+#                              APP & CORS
+# ──────────────────────────────────────────────────────────────────────────
+app = FastAPI(title="Morphea API", version="0.2.0")
+
+# Solo permitimos morphea.ai (prod) y localhost (dev)
+origins = [
+    "https://morphea.ai",
+    "http://localhost:3000",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_methods=["POST", "OPTIONS"],
+    allow_headers=["*"],
+    allow_credentials=True,
+)
+
+# ─── Prometheus middleware ────────────────────────────────────────────────
+REQUEST_COUNT = Counter(
+    "morphea_request_count",
+    "Número de peticiones recibidas",
+    ["method", "endpoint", "http_status"],
+)
+REQUEST_LATENCY = Histogram(
+    "morphea_request_latency_seconds",
+    "Latencia de las peticiones HTTP",
+    ["method", "endpoint"],
+)
+
+@app.middleware("http")
+async def metrics_middleware(request: StarletteRequest, call_next):
+    method = request.method
+    path = request.url.path
+    with REQUEST_LATENCY.labels(method=method, endpoint=path).time():
+        response = await call_next(request)
+    REQUEST_COUNT.labels(
+        method=method,
+        endpoint=path,
+        http_status=response.status_code,
+    ).inc()
+    return response
+
+# ─── Crear tablas (SQLAlchemy) ────────────────────────────────────────────
+Base.metadata.create_all(bind=engine)
+
+# ─── Seguridad / Auth helpers ─────────────────────────────────────────────
 bearer_scheme = HTTPBearer()
 
 def get_current_email(creds: HTTPAuthorizationCredentials = Depends(bearer_scheme)) -> str:
@@ -102,7 +127,9 @@ def get_current_email(creds: HTTPAuthorizationCredentials = Depends(bearer_schem
 
 app.include_router(auth_router)
 
-# ─── Schemas ──────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────
+#                      MODELOS Pydantic (entradas API)
+# ──────────────────────────────────────────────────────────────────────────
 class DreamRequest(BaseModel):
     name: str
     email: EmailStr
@@ -114,7 +141,94 @@ class SuscripcionUpdate(BaseModel):
     max_dreams: int
     expires_in_days: Optional[int] = None
 
-# ─── Endpoint genérico /interpretar ────────────────────────────────────────
+class CheckoutBody(BaseModel):
+    price_id: str
+
+# ──────────────────────────────────────────────────────────────────────────
+#             HELPERS DE SUSCRIPCIÓN (para Stripe webhook)
+# ──────────────────────────────────────────────────────────────────────────
+def get_or_create_user(email: str) -> int:
+    """Devuelve el id de usuario; lo crea si no existe."""
+    with engine.begin() as conn:
+        row = conn.execute(text("SELECT id FROM users WHERE email = :em"), {"em": email}).fetchone()
+        if row:
+            return row.id
+        res = conn.execute(text(
+            "INSERT INTO users(email, is_active) VALUES (:em, true) RETURNING id"
+        ), {"em": email})
+        return res.scalar()
+
+def upsert_subscription(user_id: int, dreams_allowed: int):
+    with engine.begin() as conn:
+        row = conn.execute(text(
+            "SELECT dreams_allowed, dreams_used FROM subscriptions WHERE user_id = :uid"
+        ), {"uid": user_id}).fetchone()
+        if row:
+            # Suma saldo al existente y reinicia contador usado
+            new_allowed = row.dreams_allowed + dreams_allowed
+            conn.execute(text(
+                "UPDATE subscriptions SET dreams_allowed = :a, dreams_used = 0 "
+                "WHERE user_id = :uid"
+            ), {"a": new_allowed, "uid": user_id})
+        else:
+            conn.execute(text(
+                "INSERT INTO subscriptions(user_id, dreams_allowed, dreams_used) "
+                "VALUES (:uid, :a, 0)"
+            ), {"uid": user_id, "a": dreams_allowed})
+
+# ──────────────────────────────────────────────────────────────────────────
+#               ENDPOINT – Crear sesión de Stripe Checkout
+# ──────────────────────────────────────────────────────────────────────────
+@app.post("/create-checkout-session")
+async def create_checkout_session(body: CheckoutBody):
+    if body.price_id not in PRICE_MAP:
+        raise HTTPException(status_code=400, detail="Price ID no válido")
+
+    try:
+        session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            mode="payment",
+            line_items=[{"price": body.price_id, "quantity": 1}],
+            success_url=f"{FRONTEND_URL}/gracias?session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{FRONTEND_URL}/#planes",
+        )
+        return {"url": session.url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ──────────────────────────────────────────────────────────────────────────
+#                         ENDPOINT – Webhook Stripe
+# ──────────────────────────────────────────────────────────────────────────
+@app.post("/stripe-webhook")
+async def stripe_webhook(request: Request):
+    payload = await request.body()
+    sig_header = request.headers.get("stripe-signature")
+
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, STRIPE_WEBHOOK_SECRET
+        )
+    except stripe.error.SignatureVerificationError:
+        return JSONResponse({"error": "Firma inválida"}, status_code=400)
+
+    # Solo nos interesa checkout.session.completed
+    if event["type"] == "checkout.session.completed":
+        session = event["data"]["object"]
+        email     = session["customer_details"]["email"]
+        price_id  = session["display_items"][0]["price"]["id"] \
+                    if "display_items" in session else \
+                    session["line_items"]["data"][0]["price"]["id"]
+
+        dreams_allowed = PRICE_MAP.get(price_id)
+        if dreams_allowed:
+            user_id = get_or_create_user(email)
+            upsert_subscription(user_id, dreams_allowed)
+
+    return {"status": "ok"}
+
+# ──────────────────────────────────────────────────────────────────────────
+#                    ENDPOINTS DE INTERPRETACIÓN (existentes)
+# ──────────────────────────────────────────────────────────────────────────
 @app.post("/interpretar")
 def interpretar_sueno(
     data: DreamRequest,
@@ -157,7 +271,7 @@ def interpretar_sueno(
             "— Equipo Morphea"
         )
 
-    # 3) Llamada genérica a OpenAI
+    # 3) Llamada a OpenAI
     resp = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[{"role":"system","content":system},
@@ -205,7 +319,7 @@ def interpretar_sueno(
 
     return {"status":"success","message":"Interpretación enviada"}
 
-# ─── Endpoints especializados ─────────────────────────────────────────────
+# ─── Endpoints especializados (freud, jung, adler, ensemble…) ─────────────
 @app.post("/interpretar/freud")
 async def interpretar_freud_route(
     data: DreamRequest, current_email: str = Depends(get_current_email)
@@ -246,10 +360,7 @@ async def interpretar_readable_route(
         raise HTTPException(400, "El texto del sueño no puede estar vacío.")
     raw = interpret_ensemble(data.message, language=data.language)["text"]
     friendly = format_readable(raw, language=data.language)["text"]
-    return {
-        "agent": "ensemble_readable",
-        "text": friendly,
-    }
+    return {"agent": "ensemble_readable", "text": friendly}
 
 # ─── Métricas Prometheus ─────────────────────────────────────────────────
 @app.get("/metrics")
@@ -257,7 +368,7 @@ def metrics():
     data = generate_latest()
     return Response(content=data, media_type=CONTENT_TYPE_LATEST)
 
-# ─── Suscripciones ───────────────────────────────────────────────────────
+# ─── Suscripciones (consulta & actualización manual) ─────────────────────
 @app.get("/suscripcion")
 def obtener_suscripcion(route_email: str = Depends(get_current_email)):
     with engine.connect() as conn:
