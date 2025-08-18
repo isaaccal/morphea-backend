@@ -1,15 +1,15 @@
+# main.py — Morphea API (usa webhook externo con ACK inmediato)
 import os
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
+from typing import Optional
 
 from dotenv import load_dotenv
 load_dotenv()
 
 # FastAPI & dependencias
-from fastapi import FastAPI, Depends, HTTPException, Request, APIRouter
+from fastapi import FastAPI, Depends, HTTPException, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.responses import JSONResponse
 from jose import jwt, JWTError
 from openai import OpenAI as OpenAIClient
 from pydantic import BaseModel, EmailStr
@@ -39,6 +39,10 @@ from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_
 from starlette.requests import Request as StarletteRequest
 from starlette.responses import Response
 
+# ✅ Usa el router del webhook externo (stripe_webhook.py)
+from stripe_webhook import router as stripe_router
+
+
 # ========= CONFIGURACIÓN DE ENTORNO =========
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
@@ -53,13 +57,11 @@ SMTP_USER   = os.getenv("SMTP_USER")
 SMTP_PASS   = os.getenv("SMTP_PASS")
 
 # Stripe
-STRIPE_SECRET_KEY       = os.getenv("STRIPE_SECRET_KEY")
-STRIPE_WEBHOOK_SECRET   = os.getenv("STRIPE_WEBHOOK_SECRET")
-FRONTEND_URL            = os.getenv("FRONTEND_URL", "https://morphea.ai")
-
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
+FRONTEND_URL      = os.getenv("FRONTEND_URL", "https://morphea.ai")
 stripe.api_key = STRIPE_SECRET_KEY
 
-# ==== MULTILENGUAJE STRIPE - INICIO ====
+# ==== MULTILENGUAJE STRIPE (IDs de precio) ====
 PRICE_IDS = {
     '5': {
         'es': 'price_1RideaP4qwLeB58n0aI63JCJ',
@@ -80,13 +82,13 @@ PRICE_IDS = {
         'fr': 'price_1Rj28EP4qwLeB58n0f5gumhj',
     },
 }
-def get_price_id(plan, locale):
+def get_price_id(plan: str, locale: Optional[str]):
     locale = (locale or 'es')[:2].lower()
     return PRICE_IDS.get(plan, {}).get(locale, PRICE_IDS.get(plan, {}).get('es'))
-# ==== MULTILENGUAJE STRIPE - FIN ====
+
 
 # ========== FASTAPI & CORS ==========
-app = FastAPI(title="Morphea API", version="0.3.0-multilenguaje")
+app = FastAPI(title="Morphea API", version="0.3.2")
 
 origins = [
     "https://morphea.ai",
@@ -95,7 +97,7 @@ origins = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_methods=["POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "OPTIONS"],  # ← añade GET
     allow_headers=["*"],
     allow_credentials=True,
 )
@@ -124,6 +126,7 @@ async def metrics_middleware(request: StarletteRequest, call_next):
     ).inc()
     return response
 
+# Si tienes modelos declarativos, esto crea tablas; con Alembic no estorba
 Base.metadata.create_all(bind=engine)
 
 # ===== Seguridad / Auth helpers =====
@@ -135,23 +138,25 @@ def get_current_email(creds: HTTPAuthorizationCredentials = Depends(bearer_schem
     except (JWTError, KeyError):
         raise HTTPException(status_code=401, detail="Token inválido")
 
+# Rutas de auth (login/register, etc.)
 app.include_router(auth_router)
 
-# ===== MODELOS Pydantic (entradas API) =====
+# ===== MODELOS Pydantic =====
 class DreamRequest(BaseModel):
     name: str
     email: EmailStr
     message: str
     language: str = "es"
+
 class SuscripcionUpdate(BaseModel):
     email: EmailStr
     max_dreams: int
     expires_in_days: Optional[int] = None
-# ==== MULTILENGUAJE STRIPE - INICIO ====
+
 class CheckoutBody(BaseModel):
     plan: str          # "5", "10", "20"
-    locale: str | None = None
-# ==== MULTILENGUAJE STRIPE - FIN ====
+    locale: Optional[str] = None
+
 
 # ========== SUSCRIPCIÓN HELPERS ==========
 def get_or_create_user(email: str) -> int:
@@ -164,25 +169,28 @@ def get_or_create_user(email: str) -> int:
         ), {"em": email})
         return res.scalar()
 
-def upsert_subscription(user_id: int, dreams_allowed: int):
+def upsert_subscription(user_id: int, credits_to_add: int):
+    """Suma créditos y NO resetea lo usado."""
     with engine.begin() as conn:
         row = conn.execute(text(
             "SELECT dreams_allowed, dreams_used FROM subscriptions WHERE user_id = :uid"
         ), {"uid": user_id}).fetchone()
         if row:
-            new_allowed = row.dreams_allowed + dreams_allowed
             conn.execute(text(
-                "UPDATE subscriptions SET dreams_allowed = :a, dreams_used = 0 "
+                "UPDATE subscriptions "
+                "SET dreams_allowed = COALESCE(dreams_allowed,0) + :add "
                 "WHERE user_id = :uid"
-            ), {"a": new_allowed, "uid": user_id})
+            ), {"add": credits_to_add, "uid": user_id})
         else:
             conn.execute(text(
                 "INSERT INTO subscriptions(user_id, dreams_allowed, dreams_used) "
                 "VALUES (:uid, :a, 0)"
-            ), {"uid": user_id, "a": dreams_allowed})
+            ), {"uid": user_id, "a": credits_to_add})
 
-# ===== ENDPOINT: Stripe Checkout multilingüe =====
+
+# ===== ENDPOINT: Stripe Checkout multilingüe (crea la sesión) =====
 router = APIRouter()
+
 @router.post("/create-checkout-session")
 async def create_checkout_session(body: CheckoutBody):
     price_id = get_price_id(body.plan, body.locale)
@@ -196,60 +204,21 @@ async def create_checkout_session(body: CheckoutBody):
             line_items=[{"price": price_id, "quantity": 1}],
             success_url=f"{FRONTEND_URL}/gracias?session_id={{CHECKOUT_SESSION_ID}}",
             cancel_url=f"{FRONTEND_URL}/#planes",
-            locale=body.locale or "auto"
+            locale=body.locale or "auto",
         )
         return {"url": session.url}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 app.include_router(router)
 
-# ===== ENDPOINT: Stripe webhook =====
-@app.post("/stripe-webhook")
-async def stripe_webhook(request: Request):
-    payload = await request.body()
-    sig_header = request.headers.get("stripe-signature")
-    try:
-        event = stripe.Webhook.construct_event(
-            payload, sig_header, STRIPE_WEBHOOK_SECRET
-        )
-    except stripe.error.SignatureVerificationError:
-        return JSONResponse({"error": "Firma inválida"}, status_code=400)
+# 🔗 Usa el webhook externo
+app.include_router(stripe_router)
 
-    if event["type"] == "checkout.session.completed":
-        session = event["data"]["object"]
-        email     = session["customer_details"]["email"]
-        price_id  = session["display_items"][0]["price"]["id"] \
-                    if "display_items" in session else \
-                    session["line_items"]["data"][0]["price"]["id"]
 
-        # ==== MULTILENGUAJE STRIPE - MAPEO DREAMS ====
-        dreams_map = {
-            # Español
-            'price_1RideaP4qwLeB58n0aI63JCJ': 5,
-            'price_1RidiwP4qwLeB58nx0JVN979': 10,
-            'price_1RidjkP4qwLeB58nwpiGdS0Q': 20,
-            # Inglés
-            'price_1Rj20GP4qwLeB58nXiVWF7Nb': 5,
-            'price_1Rj220P4qwLeB58nXTsR0h07': 10,
-            'price_1Rj230P4qwLeB58nZpx8GLlf': 20,
-            # Alemán
-            'price_1Rj24GP4qwLeB58nndsOSoN4': 5,
-            'price_1Rj253P4qwLeB58nc8FD6nPS': 10,
-            'price_1Rj25lP4qwLeB58nmuLYdz8A': 20,
-            # Francés
-            'price_1Rj26uP4qwLeB58nMOOo0PGk': 5,
-            'price_1Rj27YP4qwLeB58n5FVdE3Ls': 10,
-            'price_1Rj28EP4qwLeB58n0f5gumhj': 20,
-        }
-        dreams_allowed = dreams_map.get(price_id)
-        if dreams_allowed:
-            user_id = get_or_create_user(email)
-            upsert_subscription(user_id, dreams_allowed)
-    return {"status": "ok"}
+# ====== RESTO DE ENDPOINTS ======
 
-# ====== RESTO DE ENDPOINTS ORIGINALES (no modificados, igual que los tenías) ======
-
-# Interpreta sueños, interpreta_freud, jung, adler, ensemble, readable...
+# Interpreta un sueño (consume 1 crédito)
 @app.post("/interpretar")
 def interpretar_sueno(
     data: DreamRequest,
@@ -257,6 +226,7 @@ def interpretar_sueno(
 ):
     client = OpenAIClient(api_key=OPENAI_API_KEY)
 
+    # Verifica créditos
     with engine.connect() as conn:
         sub = conn.execute(text(
             "SELECT s.user_id, s.dreams_allowed, s.dreams_used "
@@ -266,9 +236,12 @@ def interpretar_sueno(
         if not sub:
             raise HTTPException(status_code=403, detail="No tienes una suscripción activa")
         user_id, allowed, used = sub
+        allowed = allowed or 0
+        used = used or 0
         if used >= allowed:
             return {"status": "limit-reached", "message": "Límite alcanzado, actualiza tu plan"}
 
+    # Prompt básico por idioma
     if data.language.lower().startswith("en"):
         system = "You are an expert dream interpreter based on psychology."
         user_msg = f"{data.name} dreamed: {data.message}"
@@ -299,6 +272,7 @@ def interpretar_sueno(
     text_raw = resp.choices[0].message.content
     text_html = text_raw.replace("\n", "<br>")
 
+    # Guarda y consume 1 crédito
     with engine.begin() as conn:
         conn.execute(text(
             "INSERT INTO dreams (user_id, name, email, message, language, interpretation) "
@@ -312,29 +286,35 @@ def interpretar_sueno(
             "interp": text_raw,
         })
         conn.execute(text(
-            "UPDATE subscriptions SET dreams_used = dreams_used + 1 WHERE user_id = :uid"
+            "UPDATE subscriptions SET dreams_used = COALESCE(dreams_used,0) + 1 WHERE user_id = :uid"
         ), {"uid": user_id})
 
-    html = f"""
-    <html><body style="font-family:sans-serif">
-      <h2>{greet}</h2>
-      <p>{intro}</p>
-      <blockquote style="border-left:4px solid #5C4DB1;padding:8px">{text_html}</blockquote>
-      <p>{footer}</p><p>{sign}</p>
-    </body></html>
-    """
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"]    = f"Morphea <{SMTP_USER}>"
-    msg["To"]      = data.email
-    msg.attach(MIMEText(html, "html"))
-    with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-        server.starttls()
-        server.login(SMTP_USER, SMTP_PASS)
-        server.send_message(msg)
+    # Email (opcional)
+    if SMTP_USER and SMTP_PASS and SMTP_SERVER:
+        html = f"""
+        <html><body style="font-family:sans-serif">
+          <h2>{greet}</h2>
+          <p>{intro}</p>
+          <blockquote style="border-left:4px solid #5C4DB1;padding:8px">{text_html}</blockquote>
+          <p>{footer}</p><p>{sign}</p>
+        </body></html>
+        """
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"]    = f"Morphea <{SMTP_USER}>"
+        msg["To"]      = data.email
+        msg.attach(MIMEText(html, "html"))
+        try:
+            with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+                server.starttls()
+                server.login(SMTP_USER, SMTP_PASS)
+                server.send_message(msg)
+        except Exception as e:
+            print(f"[email] warning: {e}")
 
     return {"status":"success","message":"Interpretación enviada"}
 
+# Otros endpoints de agentes y métricas
 @app.post("/interpretar/freud")
 async def interpretar_freud_route(
     data: DreamRequest, current_email: str = Depends(get_current_email)
@@ -377,13 +357,11 @@ async def interpretar_readable_route(
     friendly = format_readable(raw, language=data.language)["text"]
     return {"agent": "ensemble_readable", "text": friendly}
 
-# Métricas Prometheus
 @app.get("/metrics")
 def metrics():
     data = generate_latest()
     return Response(content=data, media_type=CONTENT_TYPE_LATEST)
 
-# Suscripciones (consulta & actualización manual)
 @app.get("/suscripcion")
 def obtener_suscripcion(route_email: str = Depends(get_current_email)):
     with engine.connect() as conn:
@@ -398,7 +376,7 @@ def obtener_suscripcion(route_email: str = Depends(get_current_email)):
             "email": route_email,
             "max_dreams": allowed,
             "dreams_used": used,
-            "remaining": allowed - used,
+            "remaining": (allowed or 0) - (used or 0),
             "created_at": created_at,
             "expires_at": expires_at,
         }
@@ -418,7 +396,7 @@ def actualizar_suscripcion(data: SuscripcionUpdate):
         ), {"uid": user_id}).fetchone()
         if exists:
             conn.execute(text(
-                "UPDATE subscriptions SET dreams_allowed = :max, dreams_used = 0, expires_at = :exp "
+                "UPDATE subscriptions SET dreams_allowed = :max, expires_at = :exp "
                 "WHERE user_id = :uid"
             ), {"max": data.max_dreams, "exp": exp, "uid": user_id})
         else:
