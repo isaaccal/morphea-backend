@@ -88,7 +88,7 @@ def get_price_id(plan: str, locale: Optional[str]):
 
 
 # ========== FASTAPI & CORS ==========
-app = FastAPI(title="Morphea API", version="0.3.3")
+app = FastAPI(title="Morphea API", version="0.3.4")
 
 origins = [
     "https://morphea.ai",
@@ -215,9 +215,8 @@ app.include_router(stripe_router)
 
 
 # ====== RESTO DE ENDPOINTS ======
-# (igual a tu versión, no los recorto aquí por espacio)
-# - /interpretar (consume crédito y envía email)
-# - /interpretar/freud, /jung, /adler, /ensemble
-# - /metrics
-# - /suscripcion
-# - /actualizar-suscripcion
+# /interpretar (consume crédito y envía email)
+# /interpretar/freud, /jung, /adler, /ensemble
+# /metrics
+# /suscripcion
+# /actualizar-suscripcion
