@@ -1,169 +1,127 @@
-# stripe_webhook.py — Morphea (modo estricto / producción)
-# - 200 inmediato si la firma es válida
-# - 400 si la firma es inválida (Stripe reintenta)
-# - Procesa en background: guarda eventos, registra pagos, acredita créditos
-# - Mapeo por price_id ya incluido (ES/EN/DE/FR)
-
 import os
 import stripe
-from fastapi import APIRouter, Request, BackgroundTasks
-from fastapi.responses import Response
-from sqlalchemy import text
-from database import engine
+from fastapi import APIRouter, Request, HTTPException
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
+from database import get_db, SessionLocal
+from models import StripeEvent, Payment, Subscription, User
+from datetime import datetime
 
 router = APIRouter()
 
-# === Configuración Stripe ===
-stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
-WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")  # whsec_...
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+endpoint_secret = os.getenv("STRIPE_WEBHOOK_SECRET")
 
-# === Mapeo price_id → créditos (modo TEST) ===
-PRICE_TO_CREDITS = {
-    # ES
-    "price_1RideaP4qwLeB58n0aI63JCJ": 5,
-    "price_1RidiwP4qwLeB58nx0JVN979": 10,
-    "price_1RidjkP4qwLeB58nwpiGdS0Q": 20,
-    # EN
-    "price_1Rj20GP4qwLeB58nXiVWF7Nb": 5,
-    "price_1Rj220P4qwLeB58nXTsR0h07": 10,
-    "price_1Rj230P4qwLeB58nZpx8GLlf": 20,
-    # DE
-    "price_1Rj24GP4qwLeB58nndsOSoN4": 5,
-    "price_1Rj253P4qwLeB58nc8FD6nPS": 10,
-    "price_1Rj25lP4qwLeB58nmuLYdz8A": 20,
-    # FR
-    "price_1Rj26uP4qwLeB58nMOOo0PGk": 5,
-    "price_1Rj27YP4qwLeB58n5FVdE3Ls": 10,
-    "price_1Rj28EP4qwLeB58n0f5gumhj": 20,
+# Mapeo price_id → créditos
+PRICE_ID_TO_CREDITS = {
+    # Español
+    "price_5_es": 5,
+    "price_10_es": 10,
+    "price_20_es": 20,
+    # Inglés
+    "price_5_en": 5,
+    "price_10_en": 10,
+    "price_20_en": 20,
+    # Francés
+    "price_5_fr": 5,
+    "price_10_fr": 10,
+    "price_20_fr": 20,
+    # Alemán
+    "price_5_de": 5,
+    "price_10_de": 10,
+    "price_20_de": 20,
 }
 
-PLAN_TO_CREDITS = {"starter-5": 5, "standard-10": 10, "pro-20": 20}
 
-# === Helpers ===
-def _mode(event) -> str:
-    return "live" if event.get("livemode") else "test"
-
-def _credits_from_session(session: dict) -> tuple[int, str, str]:
-    """Devuelve (credits, plan_label, price_id)."""
-    price_id, plan_lbl, credits = "", "", 0
-    try:
-        items = stripe.checkout.Session.list_line_items(session["id"], limit=1)
-        if items.data and getattr(items.data[0], "price", None):
-            price_id = items.data[0].price.id
-            credits = PRICE_TO_CREDITS.get(price_id, 0)
-            if credits:
-                plan_lbl = f"price:{price_id}"
-    except Exception as e:
-        print(f"[webhook] list_line_items warn: {e}")
-
-    if credits <= 0:
-        meta = session.get("metadata") or {}
-        if "credits" in meta:
-            try:
-                credits = int(meta["credits"])
-            except Exception:
-                credits = 0
-        if not credits and "plan" in meta:
-            plan_lbl = meta["plan"]
-            credits = PLAN_TO_CREDITS.get(plan_lbl, 0)
-        if not plan_lbl:
-            plan_lbl = meta.get("plan", "unknown")
-
-    return credits, plan_lbl, price_id
-
-# === Procesamiento en background ===
-def _process_event(event: dict):
-    try:
-        etype = event.get("type")
-        mode  = _mode(event)
-        event_id = event.get("id")
-
-        # Idempotencia
-        with engine.begin() as conn:
-            conn.execute(
-                text("""INSERT INTO stripe_events (event_id, event_type, mode)
-                        VALUES (:eid,:etype,:mode)
-                        ON CONFLICT (event_id) DO NOTHING"""),
-                {"eid": event_id, "etype": etype, "mode": mode},
-            )
-
-        if etype != "checkout.session.completed":
-            print(f"[webhook] ignore {etype}")
-            return
-
-        session = event["data"]["object"]
-        email = (session.get("customer_details") or {}).get("email") or session.get("customer_email") or ""
-        customer_id = session.get("customer") or ""
-        amount = session.get("amount_total") or 0
-        currency = session.get("currency") or ""
-        pi_id = session.get("payment_intent") or ""
-
-        credits, plan_label, price_id = _credits_from_session(session)
-        if credits <= 0 or not email:
-            print(f"[webhook] skip: credits={credits} email={email}")
-            return
-
-        with engine.begin() as conn:
-            row = conn.execute(
-                text("SELECT id, stripe_customer_id FROM users WHERE email=:e"),
-                {"e": email},
-            ).fetchone()
-            if not row:
-                print(f"[webhook] user_not_found email={email}")
-                return
-            uid, existing_customer = row[0], row[1]
-
-            if customer_id and not existing_customer:
-                conn.execute(
-                    text("UPDATE users SET stripe_customer_id=:c WHERE id=:u"),
-                    {"c": customer_id, "u": uid},
-                )
-
-            conn.execute(text("""
-                INSERT INTO payments
-                  (user_id, plan_name, price_id, credits_added, amount, currency,
-                   stripe_payment_intent_id, stripe_event_id, mode)
-                VALUES
-                  (:uid,:plan,:price,:credits,:amount,:currency,:pi,:eid,:mode)
-                ON CONFLICT (stripe_payment_intent_id) DO NOTHING
-            """), {"uid": uid, "plan": plan_label, "price": price_id,
-                   "credits": credits, "amount": amount, "currency": currency,
-                   "pi": pi_id, "eid": event_id, "mode": mode})
-
-            sub = conn.execute(
-                text("SELECT id,dreams_allowed,dreams_used FROM subscriptions WHERE user_id=:u FOR UPDATE"),
-                {"u": uid},
-            ).fetchone()
-
-            if sub:
-                conn.execute(
-                    text("UPDATE subscriptions SET dreams_allowed=COALESCE(dreams_allowed,0)+:add WHERE user_id=:u"),
-                    {"add": credits, "u": uid},
-                )
-            else:
-                conn.execute(
-                    text("INSERT INTO subscriptions(user_id,dreams_allowed,dreams_used) VALUES (:u,:allow,0)"),
-                    {"u": uid, "allow": credits},
-                )
-
-    except Exception as e:
-        print(f"[webhook] process_event error: {e}")
-
-# === Endpoint del webhook ===
 @router.post("/stripe-webhook")
-async def stripe_webhook(request: Request, background_tasks: BackgroundTasks):
+async def stripe_webhook(request: Request):
     payload = await request.body()
-    sig = request.headers.get("stripe-signature")
-
-    if not WEBHOOK_SECRET:
-        print("[webhook] missing STRIPE_WEBHOOK_SECRET")
-        return Response(status_code=400)
+    sig_header = request.headers.get("stripe-signature")
 
     try:
-        event = stripe.Webhook.construct_event(payload=payload, sig_header=sig, secret=WEBHOOK_SECRET)
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, endpoint_secret
+        )
+    except stripe.error.SignatureVerificationError:
+        raise HTTPException(status_code=400, detail="Invalid signature")
     except Exception as e:
-        print(f"[webhook] verify error: {e}")
-        return Response(status_code=400)
+        raise HTTPException(status_code=400, detail=f"Webhook error: {str(e)}")
 
-    background_tasks.add_task(_process_event, event)
-    return Response(status_code=200)
+    db: Session = SessionLocal()
+
+    try:
+        # Guardar SIEMPRE el evento crudo
+        stripe_event = StripeEvent(
+            id=event["id"],
+            event_type=event["type"],
+            data=str(event["data"]["object"]),
+            received_at=datetime.utcnow(),
+            mode="test" if event.get("livemode") is False else "live"
+        )
+        db.add(stripe_event)
+        db.commit()
+    except Exception as e:
+        print(f"[ERROR] No se pudo guardar en stripe_events: {e}")
+        db.rollback()
+
+    # Procesar solo checkout completado
+    if event["type"] == "checkout.session.completed":
+        session = event["data"]["object"]
+        customer_email = session.get("customer_details", {}).get("email")
+        price_id = None
+        credits = 0
+
+        # Buscar items de la sesión
+        if "line_items" in session:
+            items = session["line_items"].get("data", [])
+            if items:
+                price_id = items[0]["price"]["id"]
+
+        # Fallback: si no trae line_items
+        if not price_id and "metadata" in session:
+            price_id = session["metadata"].get("price_id")
+
+        # Mapear a créditos
+        if price_id in PRICE_ID_TO_CREDITS:
+            credits = PRICE_ID_TO_CREDITS[price_id]
+        else:
+            credits = 5  # fallback mínimo
+            print(f"[WARN] No se reconoció price_id={price_id}, usando 5 créditos")
+
+        try:
+            user = db.query(User).filter(User.email == customer_email).first()
+            if not user:
+                print(f"[ERROR] Usuario no encontrado: {customer_email}")
+                return {"status": "ok"}
+
+            subscription = (
+                db.query(Subscription).filter(Subscription.user_id == user.id).first()
+            )
+            if subscription:
+                subscription.dreams_allowed += credits
+            else:
+                subscription = Subscription(
+                    user_id=user.id,
+                    dreams_allowed=credits,
+                    dreams_used=0,
+                )
+                db.add(subscription)
+
+            payment = Payment(
+                price_id=price_id or "unknown",
+                credits_added=credits,
+                amount=session.get("amount_total", 0),
+                currency=session.get("currency", "usd"),
+                user_id=user.id,
+                created_at=datetime.utcnow()
+            )
+            db.add(payment)
+
+            db.commit()
+            print(f"[OK] Se acreditaron {credits} créditos a {customer_email}")
+
+        except SQLAlchemyError as e:
+            db.rollback()
+            print(f"[DB ERROR] {str(e)}")
+
+    return {"status": "ok"}
