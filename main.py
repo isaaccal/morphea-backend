@@ -88,7 +88,7 @@ def get_price_id(plan: str, locale: Optional[str]):
 
 
 # ========== FASTAPI & CORS ==========
-app = FastAPI(title="Morphea API", version="0.3.4")
+app = FastAPI(title="Morphea API", version="0.3.5")
 
 origins = [
     "https://morphea.ai",
@@ -142,49 +142,9 @@ app.include_router(auth_router)
 
 
 # ===== MODELOS Pydantic =====
-class DreamRequest(BaseModel):
-    name: str
-    email: EmailStr
-    message: str
-    language: str = "es"
-
-class SuscripcionUpdate(BaseModel):
-    email: EmailStr
-    max_dreams: int
-    expires_in_days: Optional[int] = None
-
 class CheckoutBody(BaseModel):
     plan: str          # "5", "10", "20"
     locale: Optional[str] = None
-
-
-# ========== SUSCRIPCIÓN HELPERS ==========
-def get_or_create_user(email: str) -> int:
-    with engine.begin() as conn:
-        row = conn.execute(text("SELECT id FROM users WHERE email = :em"), {"em": email}).fetchone()
-        if row:
-            return row.id
-        res = conn.execute(text(
-            "INSERT INTO users(email, is_active) VALUES (:em, true) RETURNING id"
-        ), {"em": email})
-        return res.scalar()
-
-def upsert_subscription(user_id: int, credits_to_add: int):
-    with engine.begin() as conn:
-        row = conn.execute(text(
-            "SELECT dreams_allowed, dreams_used FROM subscriptions WHERE user_id = :uid"
-        ), {"uid": user_id}).fetchone()
-        if row:
-            conn.execute(text(
-                "UPDATE subscriptions "
-                "SET dreams_allowed = COALESCE(dreams_allowed,0) + :add "
-                "WHERE user_id = :uid"
-            ), {"add": credits_to_add, "uid": user_id})
-        else:
-            conn.execute(text(
-                "INSERT INTO subscriptions(user_id, dreams_allowed, dreams_used) "
-                "VALUES (:uid, :a, 0)"
-            ), {"uid": user_id, "a": credits_to_add})
 
 
 # ===== ENDPOINT: Stripe Checkout multilingüe =====
@@ -212,11 +172,3 @@ app.include_router(router)
 
 # 🔗 Incluye webhook externo
 app.include_router(stripe_router)
-
-
-# ====== RESTO DE ENDPOINTS ======
-# /interpretar (consume crédito y envía email)
-# /interpretar/freud, /jung, /adler, /ensemble
-# /metrics
-# /suscripcion
-# /actualizar-suscripcion
