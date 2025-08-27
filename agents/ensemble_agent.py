@@ -10,7 +10,7 @@ from langchain_community.vectorstores import PGVector
 from langchain_openai.chat_models import ChatOpenAI
 from langchain.schema import Document, HumanMessage
 
-# —–––– Configuración de RAG para cada escuelas –––––—
+# —–––– Configuración de RAG para cada escuela –––––—
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise ValueError("Falta DATABASE_URL en el .env")
@@ -37,7 +37,7 @@ Toma las mejores ideas de psicología profunda para interpretar este sueño de f
 clara y cercana. No menciones ni cites nombres, apenas ofrece una sola interpretación cálida y directa.
 
 Sueño del usuario:
-\"\"\"
+\"\"\" 
 {dream}
 \"\"\"
 
@@ -45,7 +45,10 @@ Por favor, responde usando un lenguaje humano, accesible, como si un psicólogo 
 sin tecnicismos ni referencias bibliográficas.
 """
 
-def interpret_ensemble(dream_text: str, language: str = "es") -> Dict:
+def ensemble_interpretation(dream_text: str, language: str = "es") -> Dict:
+    """
+    Une el conocimiento de Freud, Jung y Adler en una interpretación unificada.
+    """
     # 1) Recuperar fragmentos relevantes de las tres colecciones
     combined_contexts: List[str] = []
     for retriever in retrievers:
