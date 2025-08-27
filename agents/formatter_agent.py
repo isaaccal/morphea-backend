@@ -12,7 +12,7 @@ from langchain.schema import HumanMessage
 # Recibe un texto (interpretación cruda) y devuelve una versión
 # más breve, cálida y fácil de leer, sin tecnicismos ni “voz de robot”.
 
-def format_readable(text: str, language: str = "es") -> Dict[str, Any]:
+def format_final_response(text: str, language: str = "es") -> Dict[str, Any]:
     """
     Toma la interpretación completa de un sueño y la convierte en un párrafo
     muy amigable y conciso.
@@ -37,7 +37,6 @@ def format_readable(text: str, language: str = "es") -> Dict[str, Any]:
 
     # 2) Llama al LLM
     llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0.8)
-    # generate() espera una lista de conversaciones, cada una lista de mensajes
     result = llm.generate([[HumanMessage(content=prompt)]])
 
     # 3) Extrae la respuesta formateada
