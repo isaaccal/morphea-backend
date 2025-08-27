@@ -50,7 +50,7 @@ CONTEXTO:
 {context}
 """
 
-def interpret_freud(dream_text: str, language: str = "es") -> Dict:
+def freud_interpretation(dream_text: str, language: str = "es") -> Dict:
     # 1. Recuperar documentos
     retriever = vector_store.as_retriever(search_kwargs={"k": 3})
     docs: List[Document] = retriever.get_relevant_documents(dream_text)
