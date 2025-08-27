@@ -1,6 +1,5 @@
 # main.py — Morphea API
 import os
-from datetime import datetime, timedelta
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -11,18 +10,12 @@ from fastapi import FastAPI, Depends, HTTPException, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
-from openai import OpenAI as OpenAIClient
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from sqlalchemy import text
 from database import engine, Base
 
 # Stripe
 import stripe
-
-# SMTP / correo
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 
 # Rutas de autenticación
 from auth import router as auth_router
@@ -51,11 +44,6 @@ if not OPENAI_API_KEY:
 JWT_SECRET = os.getenv("JWT_SECRET_KEY", "supersecret")
 ALGORITHM  = "HS256"
 
-SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
-SMTP_PORT   = int(os.getenv("SMTP_PORT", 587))
-SMTP_USER   = os.getenv("SMTP_USER")
-SMTP_PASS   = os.getenv("SMTP_PASS")
-
 # Stripe
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 FRONTEND_URL      = os.getenv("FRONTEND_URL", "https://morphea.ai")
@@ -82,13 +70,14 @@ PRICE_IDS = {
         'fr': 'price_1Rj28EP4qwLeB58n0f5gumhj',
     },
 }
+
 def get_price_id(plan: str, locale: Optional[str]):
     locale = (locale or 'es')[:2].lower()
     return PRICE_IDS.get(plan, {}).get(locale, PRICE_IDS.get(plan, {}).get('es'))
 
 
 # ========== FASTAPI & CORS ==========
-app = FastAPI(title="Morphea API", version="0.3.5")
+app = FastAPI(title="Morphea API", version="0.3.6")
 
 origins = [
     "https://morphea.ai",
@@ -113,6 +102,7 @@ REQUEST_LATENCY = Histogram(
     "Latencia de las peticiones HTTP",
     ["method", "endpoint"],
 )
+
 @app.middleware("http")
 async def metrics_middleware(request: StarletteRequest, call_next):
     method = request.method
@@ -126,10 +116,12 @@ async def metrics_middleware(request: StarletteRequest, call_next):
     ).inc()
     return response
 
+# Inicializa DB
 Base.metadata.create_all(bind=engine)
 
 # ===== Seguridad / Auth helpers =====
 bearer_scheme = HTTPBearer()
+
 def get_current_email(creds: HTTPAuthorizationCredentials = Depends(bearer_scheme)) -> str:
     try:
         payload = jwt.decode(creds.credentials, JWT_SECRET, algorithms=[ALGORITHM])
@@ -170,5 +162,5 @@ async def create_checkout_session(body: CheckoutBody):
 
 app.include_router(router)
 
-# 🔗 Incluye webhook externo
+# 🔗 Incluye webhook externo (stripe_webhook.py)
 app.include_router(stripe_router)
