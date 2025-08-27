@@ -1,27 +1,32 @@
 # agents/jung_agent.py
+from openai import OpenAI
 
-import os
-from langchain import PromptTemplate, LLMChain
-from langchain_community.llms import OpenAI
+client = OpenAI()
 
-# 1. Carga prompt
-prompt_path = os.path.join(os.path.dirname(__file__), "../prompts/jung_prompt.txt")
-with open(prompt_path, encoding="utf-8") as f:
-    jung_prompt = f.read()
+def jung_interpretation(dream_text: str, language: str = "es") -> str:
+    """
+    Interpreta un sueño con perspectiva Jungiana.
+    Se enfoca en arquetipos, símbolos culturales y el inconsciente colectivo.
+    """
+    prompt = f"""
+    Eres un psicólogo inspirado en Carl Jung. 
+    Interpreta el siguiente sueño considerando arquetipos y símbolos del inconsciente colectivo.
+    - Resume el sueño brevemente
+    - Propón 2-3 hipótesis interpretativas
+    - Relaciona con símbolos culturales universales
+    - Da sugerencias prácticas para la vida del soñante
+    Responde en {language}.
 
-# 2. Plantilla
-template = jung_prompt + "\n\n[Usuario] \"{dream}\"\n\n[Jung]"
-prompt_template = PromptTemplate(input_variables=["dream"], template=template)
+    Sueño:
+    {dream_text}
+    """
 
-# 3. LLM
-llm = OpenAI(
-    temperature=0.7,
-    openai_api_key=os.getenv("OPENAI_API_KEY")
-)
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "system", "content": "Eres Carl Jung en un ejercicio de interpretación de sueños."},
+                  {"role": "user", "content": prompt}],
+        max_tokens=350,
+        temperature=0.7,
+    )
 
-# 4. Cadena
-jung_chain = LLMChain(llm=llm, prompt=prompt_template)
-
-def interpret_jung(dream: str) -> str:
-    """Llama al agente Jung y retorna su interpretación."""
-    return jung_chain.run(dream=dream)
+    return response.choices[0].message.content.strip()
