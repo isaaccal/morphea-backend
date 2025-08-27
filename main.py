@@ -3,21 +3,22 @@ from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from database import get_db, Base, engine
-from auth import get_current_user
-from models import User
+from models import User, Subscription
 from agents.orchestrator import interpret_dream
 import stripe
 import os
+from jose import jwt, JWTError
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 # Crear tablas en la BD si no existen
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Morphea Backend", version="1.0")
+app = FastAPI(title="Morphea Backend", version="1.1")
 
-# Configuración CORS (WordPress / Elementor / Hoppscotch)
+# Configuración CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # puedes restringir luego a ["https://morphea.ai"]
+    allow_origins=["*"],  # luego restringir a https://morphea.ai
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -27,8 +28,28 @@ app.add_middleware(
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "https://morphea.ai")
 
+# JWT Config
+JWT_SECRET = os.getenv("JWT_SECRET_KEY", "supersecret")
+ALGORITHM = "HS256"
+bearer_scheme = HTTPBearer()
+
+def get_current_user(
+    creds: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+):
+    try:
+        payload = jwt.decode(creds.credentials, JWT_SECRET, algorithms=[ALGORITHM])
+        email = payload.get("sub")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token inválido")
+
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    return user
+
 # ===========================================
-# ENDPOINT: Interpreta sueños (requiere login)
+# ENDPOINT: Interpreta sueños
 # ===========================================
 @app.post("/interpretar")
 def interpretar(
@@ -41,7 +62,7 @@ def interpretar(
         raise HTTPException(status_code=400, detail="Falta el texto del sueño")
 
     # Verificar créditos disponibles
-    subscription = current_user.subscription
+    subscription = db.query(Subscription).filter(Subscription.user_id == current_user.id).first()
     if not subscription or subscription.dreams_used >= subscription.dreams_allowed:
         raise HTTPException(status_code=403, detail="Sin créditos disponibles")
 
@@ -52,7 +73,10 @@ def interpretar(
     subscription.dreams_used += 1
     db.commit()
 
-    return {"interpretation": result, "remaining": subscription.dreams_allowed - subscription.dreams_used}
+    return {
+        "interpretation": result,
+        "remaining": subscription.dreams_allowed - subscription.dreams_used
+    }
 
 # ===========================================
 # ENDPOINT: Crear sesión de pago (Stripe Checkout)
@@ -62,20 +86,16 @@ def create_checkout_session(request: dict):
     plan = request.get("plan")
     locale = request.get("locale", "auto")
 
-    if not plan:
-        raise HTTPException(status_code=400, detail="Plan no especificado")
+    PRICE_IDS = {
+        "5": os.getenv("STRIPE_PRICE_5"),
+        "10": os.getenv("STRIPE_PRICE_10"),
+        "20": os.getenv("STRIPE_PRICE_20"),
+    }
+
+    if plan not in PRICE_IDS:
+        raise HTTPException(status_code=400, detail="Plan inválido")
 
     try:
-        # Recuperar los IDs de precios desde variables de entorno
-        PRICE_IDS = {
-            "5": os.getenv("STRIPE_PRICE_5"),
-            "10": os.getenv("STRIPE_PRICE_10"),
-            "20": os.getenv("STRIPE_PRICE_20"),
-        }
-
-        if plan not in PRICE_IDS:
-            raise HTTPException(status_code=400, detail="Plan inválido")
-
         session = stripe.checkout.Session.create(
             payment_method_types=["card"],
             line_items=[{"price": PRICE_IDS[plan], "quantity": 1}],
@@ -84,9 +104,7 @@ def create_checkout_session(request: dict):
             cancel_url=f"{FRONTEND_URL}/cancelado",
             locale=locale,
         )
-
         return {"url": session.url}
-
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -100,39 +118,41 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
     endpoint_secret = os.getenv("STRIPE_WEBHOOK_SECRET")
 
     try:
-        event = stripe.Webhook.construct_event(
-            payload, sig_header, endpoint_secret
-        )
+        event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Webhook error: {str(e)}")
 
-    # Manejar evento de sesión completada
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
-        customer_email = session.get("customer_details", {}).get("email")
+        email = session.get("customer_details", {}).get("email")
 
-        if customer_email:
-            user = db.query(User).filter(User.email == customer_email).first()
+        if email:
+            user = db.query(User).filter(User.email == email).first()
             if user:
-                # Buscar el plan adquirido
-                price_id = session["line_items"][0]["price"]["id"] if "line_items" in session else None
+                # Determinar créditos según el plan
+                price_id = None
+                if "line_items" in session:
+                    price_id = session["line_items"][0]["price"]["id"]
+
+                credits = 0
                 if price_id == os.getenv("STRIPE_PRICE_5"):
                     credits = 5
                 elif price_id == os.getenv("STRIPE_PRICE_10"):
                     credits = 10
                 elif price_id == os.getenv("STRIPE_PRICE_20"):
                     credits = 20
-                else:
-                    credits = 0
 
-                if user.subscription:
-                    user.subscription.dreams_allowed += credits
-                else:
-                    user.subscription = {
-                        "dreams_allowed": credits,
-                        "dreams_used": 0,
-                    }
-
-                db.commit()
+                if credits > 0:
+                    subscription = db.query(Subscription).filter(Subscription.user_id == user.id).first()
+                    if subscription:
+                        subscription.dreams_allowed += credits
+                    else:
+                        subscription = Subscription(
+                            user_id=user.id,
+                            dreams_allowed=credits,
+                            dreams_used=0
+                        )
+                        db.add(subscription)
+                    db.commit()
 
     return {"status": "success"}
