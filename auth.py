@@ -1,9 +1,9 @@
 # auth.py
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordRequestForm, HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
-from jose import jwt
+from jose import jwt, JWTError
 from datetime import datetime, timedelta
 
 from database import get_db
@@ -32,6 +32,26 @@ def create_access_token(data: dict, expires_delta: int = ACCESS_TOKEN_EXPIRE_MIN
     expire = datetime.utcnow() + timedelta(minutes=expires_delta)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, JWT_SECRET, algorithm=ALGORITHM)
+
+# ================================
+# DEPENDENCIA: obtener usuario actual
+# ================================
+bearer_scheme = HTTPBearer()
+
+def get_current_user(
+    creds: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+):
+    try:
+        payload = jwt.decode(creds.credentials, JWT_SECRET, algorithms=[ALGORITHM])
+        email = payload.get("sub")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token inválido")
+
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    return user
 
 # ================================
 # REGISTRO
@@ -79,8 +99,8 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 # PERFIL DEL USUARIO
 # ================================
 @router.get("/me")
-def me(current_user: str = Depends()):
+def me(current_user: User = Depends(get_current_user)):
     """
     Devuelve info básica del usuario autenticado.
     """
-    return {"user": current_user}
+    return {"email": current_user.email}
