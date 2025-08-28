@@ -1,4 +1,3 @@
-# main.py
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -10,15 +9,19 @@ import os
 from jose import jwt, JWTError
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
+# 👇 Importar routers adicionales
+from auth import router as auth_router
+from stripe_webhook import router as stripe_router
+
 # Crear tablas en la BD si no existen
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Morphea Backend", version="1.1")
+app = FastAPI(title="Morphea Backend", version="1.2")
 
 # Configuración CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # luego restringir a https://morphea.ai
+    allow_origins=["*"],  # en producción restringir a https://morphea.ai
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -61,15 +64,12 @@ def interpretar(
     if not dream_text:
         raise HTTPException(status_code=400, detail="Falta el texto del sueño")
 
-    # Verificar créditos disponibles
     subscription = db.query(Subscription).filter(Subscription.user_id == current_user.id).first()
     if not subscription or subscription.dreams_used >= subscription.dreams_allowed:
         raise HTTPException(status_code=403, detail="Sin créditos disponibles")
 
-    # Ejecutar agentes vía orchestrator
     result = interpret_dream(dream_text, language=request.get("language", "es"))
 
-    # Actualizar uso
     subscription.dreams_used += 1
     db.commit()
 
@@ -129,9 +129,8 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
         if email:
             user = db.query(User).filter(User.email == email).first()
             if user:
-                # Determinar créditos según el plan comprado
                 credits = 0
-                if session.get("amount_total") == 999:   # ejemplo 9.99$
+                if session.get("amount_total") == 999:
                     credits = 5
                 elif session.get("amount_total") == 1799:
                     credits = 10
@@ -152,3 +151,13 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
                     db.commit()
 
     return {"status": "success"}
+
+# ===========================================
+# INCLUIR ROUTERS EXTERNOS
+# ===========================================
+app.include_router(auth_router, prefix="/auth", tags=["auth"])
+app.include_router(stripe_router, prefix="", tags=["stripe"])
+
+@app.get("/")
+def root():
+    return {"message": "Morphea backend funcionando 🚀"}
