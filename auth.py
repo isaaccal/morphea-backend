@@ -1,103 +1,86 @@
-# auth.py  ── Endpoints: /register , /login , /login-service , /me
-import os
-from datetime import datetime, timedelta
-from typing import Optional
-
-from dotenv import load_dotenv
-load_dotenv()                                # ← carga .env antes de leer variables
-
+# auth.py
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
-from jose import jwt, JWTError
-from passlib.context import CryptContext
 from sqlalchemy.orm import Session
+from passlib.context import CryptContext
+from jose import jwt
+from datetime import datetime, timedelta
 
 from database import get_db
-from models    import User
+from models import User, Subscription
 
-router = APIRouter(prefix="", tags=["auth"])  # ajusta el prefijo si lo deseas
+import os
 
-# ─── Configuración JWT ────────────────────────────────────────────────────
+router = APIRouter(tags=["auth"])
+
+# Configuración JWT
 JWT_SECRET = os.getenv("JWT_SECRET_KEY", "supersecret")
-ALGORITHM  = "HS256"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 horas
 
-ACCESS_TTL_MIN  = 60 * 24          # 24 h  → usuarios normales
-SERVICE_TTL_MIN = 60 * 24 * 365    # 1 año → usuario de servicio (WebHook)
+# Password hashing
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
 
-# ─── Utilidades internas ─────────────────────────────────────────────────
-def hash_pwd(pwd: str) -> str:
-    return pwd_ctx.hash(pwd)
+def verify_password(plain: str, hashed: str) -> bool:
+    return pwd_context.verify(plain, hashed)
 
-def verify_pwd(pwd: str, pwd_hash: str) -> bool:
-    return pwd_ctx.verify(pwd, pwd_hash)
+def create_access_token(data: dict, expires_delta: int = ACCESS_TOKEN_EXPIRE_MINUTES):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=expires_delta)
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, JWT_SECRET, algorithm=ALGORITHM)
 
-def create_access_token(email: str, ttl_min: int = ACCESS_TTL_MIN) -> str:
-    now    = datetime.utcnow()
-    exp    = now + timedelta(minutes=ttl_min)
-    claims = {"sub": email, "exp": exp}
-    return jwt.encode(claims, JWT_SECRET, algorithm=ALGORITHM)
+# ================================
+# REGISTRO
+# ================================
+@router.post("/register")
+def register(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    """
+    Registra un nuevo usuario con email y password.
+    ⚠️ Usar en pruebas: enviar username=email, password=clave
+    """
+    existing = db.query(User).filter(User.email == form_data.username).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="El usuario ya existe")
 
-# ─── Esquemas Pydantic ───────────────────────────────────────────────────
-from pydantic import BaseModel, EmailStr, Field
-
-class RegisterIn(BaseModel):
-    email:    EmailStr
-    password: str = Field(min_length=6)
-
-class TokenOut(BaseModel):
-    access_token: str
-    token_type:   str = "bearer"
-
-# ─── Endpoints ────────────────────────────────────────────────────────────
-@router.post("/register", response_model=TokenOut)
-def register(data: RegisterIn, db: Session = Depends(get_db)):
-    if db.query(User).filter_by(email=data.email).first():
-        raise HTTPException(status_code=409, detail="Usuario ya existe")
-
-    user = User(email=data.email, password_hash=hash_pwd(data.password))
+    hashed_pw = hash_password(form_data.password)
+    user = User(email=form_data.username, password_hash=hashed_pw)
     db.add(user)
     db.commit()
+    db.refresh(user)
 
-    return {"access_token": create_access_token(user.email)}
+    # Crear suscripción vacía
+    subscription = Subscription(user_id=user.id, dreams_allowed=0, dreams_used=0)
+    db.add(subscription)
+    db.commit()
 
-@router.post("/login", response_model=TokenOut)
-def login(form: OAuth2PasswordRequestForm = Depends(),
-          db: Session = Depends(get_db)):
-    user = db.query(User).filter_by(email=form.username).first()
-    if not user or not verify_pwd(form.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Credenciales inválidas")
-    return {"access_token": create_access_token(user.email)}
+    return {"msg": "Usuario registrado con éxito", "email": user.email}
 
-# ─── Login especial para WebHook (token 1 año) ───────────────────────────
-SERVICE_EMAIL = "interpretaciones@morphea.ai"
-
-@router.post("/login-service", response_model=TokenOut)
-def login_service(form: OAuth2PasswordRequestForm = Depends(),
-                  db: Session = Depends(get_db)):
-    # Solo la cuenta definida puede usar este endpoint
-    if form.username != SERVICE_EMAIL:
-        raise HTTPException(status_code=403, detail="Solo disponible para servicio WebHook")
-
-    user = db.query(User).filter_by(email=form.username).first()
-    if not user or not verify_pwd(form.password, user.password_hash):
+# ================================
+# LOGIN
+# ================================
+@router.post("/login")
+def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    """
+    Autenticación básica con username=email y password.
+    Devuelve un JWT si las credenciales son correctas.
+    """
+    user = db.query(User).filter(User.email == form_data.username).first()
+    if not user or not verify_password(form_data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
 
-    token = create_access_token(user.email, ttl_min=SERVICE_TTL_MIN)
-    return {"access_token": token}
+    access_token = create_access_token({"sub": user.email})
+    return {"access_token": access_token, "token_type": "bearer"}
 
-# ─── /me ──────────────────────────────────────────────────────────────────
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-bearer_scheme = HTTPBearer()
-
-def get_current_email(creds: HTTPAuthorizationCredentials = Depends(bearer_scheme)) -> str:
-    try:
-        payload = jwt.decode(creds.credentials, JWT_SECRET, algorithms=[ALGORITHM])
-        return payload["sub"]
-    except (JWTError, KeyError):
-        raise HTTPException(status_code=401, detail="Token inválido")
-
+# ================================
+# PERFIL DEL USUARIO
+# ================================
 @router.get("/me")
-def read_me(current_email: str = Depends(get_current_email)):
-    return {"email": current_email}
+def me(current_user: str = Depends()):
+    """
+    Devuelve info básica del usuario autenticado.
+    """
+    return {"user": current_user}
