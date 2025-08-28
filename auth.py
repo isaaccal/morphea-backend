@@ -1,3 +1,4 @@
+# auth.py
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
@@ -8,18 +9,24 @@ from datetime import datetime, timedelta
 from database import get_db
 from models import User
 
+import os
+
 # ==============================
 # CONFIG
 # ==============================
-SECRET_KEY = "supersecretkey"   # ⚠️ cámbialo en producción
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "supersecret")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24h
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# Router principal
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
+# Alias para compatibilidad con main.py
+router = auth_router
 
 # ==============================
-# Pydantic Models
+# MODELOS
 # ==============================
 class RegisterRequest(BaseModel):
     email: EmailStr
@@ -34,13 +41,13 @@ class TokenResponse(BaseModel):
     token_type: str
 
 # ==============================
-# Utils
+# UTILS
 # ==============================
 def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+def verify_password(plain: str, hashed: str) -> bool:
+    return pwd_context.verify(plain, hashed)
 
 def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()
@@ -48,8 +55,22 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
+def get_current_user(token: str, db: Session = Depends(get_db)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if not email:
+            raise HTTPException(status_code=401, detail="Token inválido")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token inválido")
+
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    return user
+
 # ==============================
-# Endpoints
+# ENDPOINTS
 # ==============================
 @auth_router.post("/register", response_model=TokenResponse)
 def register(data: RegisterRequest, db: Session = Depends(get_db)):
@@ -57,8 +78,8 @@ def register(data: RegisterRequest, db: Session = Depends(get_db)):
     if user:
         raise HTTPException(status_code=400, detail="El usuario ya existe")
 
-    hashed_password = get_password_hash(data.password)
-    new_user = User(email=data.email, password_hash=hashed_password)
+    hashed_pw = get_password_hash(data.password)
+    new_user = User(email=data.email, password_hash=hashed_pw)
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
@@ -77,16 +98,5 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
 
 @auth_router.get("/me")
 def me(token: str, db: Session = Depends(get_db)):
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str = payload.get("sub")
-        if not email:
-            raise HTTPException(status_code=401, detail="Token inválido")
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Token inválido")
-
-    user = db.query(User).filter(User.email == email).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="Usuario no encontrado")
-
-    return {"email": user.email, "id": user.id}
+    current_user = get_current_user(token, db)
+    return {"email": current_user.email, "id": current_user.id}

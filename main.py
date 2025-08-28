@@ -1,3 +1,4 @@
+# main.py
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -9,14 +10,14 @@ import os
 from jose import jwt, JWTError
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-# 👇 Importar routers adicionales
-from auth import router as auth_router
+# 👇 Importar routers
+from auth import auth_router, router as alt_auth_router
 from stripe_webhook import router as stripe_router
 
 # Crear tablas en la BD si no existen
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Morphea Backend", version="1.2")
+app = FastAPI(title="Morphea Backend", version="1.4")
 
 # Configuración CORS
 app.add_middleware(
@@ -153,10 +154,11 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
     return {"status": "success"}
 
 # ===========================================
-# INCLUIR ROUTERS EXTERNOS
+# INCLUIR ROUTERS
 # ===========================================
-app.include_router(auth_router, prefix="/auth", tags=["auth"])
-app.include_router(stripe_router, prefix="", tags=["stripe"])
+app.include_router(auth_router)       # principal
+app.include_router(alt_auth_router)   # alias de compatibilidad
+app.include_router(stripe_router)
 
 @app.get("/")
 def root():
