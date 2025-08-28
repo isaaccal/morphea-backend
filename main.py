@@ -17,7 +17,7 @@ from stripe_webhook import router as stripe_router
 # Crear tablas en la BD si no existen
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Morphea Backend", version="1.4")
+app = FastAPI(title="Morphea Backend", version="1.5")
 
 # Configuración CORS
 app.add_middleware(
@@ -61,7 +61,7 @@ def interpretar(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    dream_text = request.get("dream")
+    dream_text = request.get("message")   # 👈 ahora espera "message"
     if not dream_text:
         raise HTTPException(status_code=400, detail="Falta el texto del sueño")
 
