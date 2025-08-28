@@ -129,17 +129,13 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
         if email:
             user = db.query(User).filter(User.email == email).first()
             if user:
-                # Determinar créditos según el plan
-                price_id = None
-                if "line_items" in session:
-                    price_id = session["line_items"][0]["price"]["id"]
-
+                # Determinar créditos según el plan comprado
                 credits = 0
-                if price_id == os.getenv("STRIPE_PRICE_5"):
+                if session.get("amount_total") == 999:   # ejemplo 9.99$
                     credits = 5
-                elif price_id == os.getenv("STRIPE_PRICE_10"):
+                elif session.get("amount_total") == 1799:
                     credits = 10
-                elif price_id == os.getenv("STRIPE_PRICE_20"):
+                elif session.get("amount_total") == 2999:
                     credits = 20
 
                 if credits > 0:
