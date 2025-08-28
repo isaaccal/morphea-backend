@@ -1,4 +1,3 @@
-# main.py
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -14,12 +13,11 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from auth import auth_router, router as alt_auth_router
 from stripe_webhook import router as stripe_router
 
-# Crear tablas en la BD si no existen
-Base.metadata.create_all(bind=engine)
+app = FastAPI(title="Morphea Backend", version="1.6")
 
-app = FastAPI(title="Morphea Backend", version="1.5")
-
+# ===============================
 # Configuración CORS
+# ===============================
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # en producción restringir a https://morphea.ai
@@ -28,11 +26,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ===============================
 # Stripe Config
+# ===============================
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "https://morphea.ai")
 
+# ===============================
 # JWT Config
+# ===============================
 JWT_SECRET = os.getenv("JWT_SECRET_KEY", "supersecret")
 ALGORITHM = "HS256"
 bearer_scheme = HTTPBearer()
@@ -52,16 +54,35 @@ def get_current_user(
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     return user
 
-# ===========================================
-# ENDPOINT: Interpreta sueños
-# ===========================================
+# ===============================
+# Startup Event
+# ===============================
+@app.on_event("startup")
+def on_startup():
+    # Crear tablas si no existen
+    Base.metadata.create_all(bind=engine)
+
+# ===============================
+# Healthcheck
+# ===============================
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+@app.get("/")
+def root():
+    return {"message": "Morphea backend funcionando 🚀"}
+
+# ===============================
+# Endpoint: Interpretar sueños
+# ===============================
 @app.post("/interpretar")
 def interpretar(
     request: dict,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    dream_text = request.get("message")   # 👈 ahora espera "message"
+    dream_text = request.get("message")   # 👈 usamos "message"
     if not dream_text:
         raise HTTPException(status_code=400, detail="Falta el texto del sueño")
 
@@ -79,9 +100,9 @@ def interpretar(
         "remaining": subscription.dreams_allowed - subscription.dreams_used
     }
 
-# ===========================================
-# ENDPOINT: Crear sesión de pago (Stripe Checkout)
-# ===========================================
+# ===============================
+# Endpoint: Crear sesión de pago
+# ===============================
 @app.post("/create-checkout-session")
 def create_checkout_session(request: dict):
     plan = request.get("plan")
@@ -109,9 +130,9 @@ def create_checkout_session(request: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ===========================================
-# ENDPOINT: Webhook de Stripe
-# ===========================================
+# ===============================
+# Endpoint: Webhook de Stripe
+# ===============================
 @app.post("/stripe-webhook")
 async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
     payload = await request.body()
@@ -153,13 +174,9 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
 
     return {"status": "success"}
 
-# ===========================================
-# INCLUIR ROUTERS
-# ===========================================
+# ===============================
+# Incluir Routers
+# ===============================
 app.include_router(auth_router)       # principal
 app.include_router(alt_auth_router)   # alias de compatibilidad
 app.include_router(stripe_router)
-
-@app.get("/")
-def root():
-    return {"message": "Morphea backend funcionando 🚀"}
