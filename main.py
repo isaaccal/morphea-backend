@@ -13,7 +13,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from auth import auth_router, router as alt_auth_router
 from stripe_webhook import router as stripe_router
 
-app = FastAPI(title="Morphea Backend", version="1.7")
+app = FastAPI(title="Morphea Backend", version="1.8")
 
 # ===============================
 # Configuración CORS
@@ -82,22 +82,52 @@ def interpretar(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # Validación de payload
     dream_text = request.get("message")   # 👈 usamos "message"
-    if not dream_text:
+    if not dream_text or not isinstance(dream_text, str):
         raise HTTPException(status_code=400, detail="Falta el texto del sueño")
 
-    subscription = db.query(Subscription).filter(Subscription.user_id == current_user.id).first()
-    if not subscription or subscription.dreams_used >= subscription.dreams_allowed:
-        raise HTTPException(status_code=403, detail="Sin créditos disponibles")
+    # Obtener / normalizar suscripción
+    subscription = (
+        db.query(Subscription)
+        .filter(Subscription.user_id == current_user.id)
+        .first()
+    )
+    if not subscription:
+        # No se crea suscripción aquí para no cambiar lógica previa:
+        raise HTTPException(status_code=402, detail="No tienes créditos disponibles.")
 
-    result = interpret_dream(dream_text, language=request.get("language", "es"))
+    # Normalizar nulos y calcular saldo
+    if subscription.dreams_used is None:
+        subscription.dreams_used = 0  # evita 500 cuando estaba NULL
+        db.flush()
 
-    subscription.dreams_used += 1
+    allowed = subscription.dreams_allowed or 0
+    used = subscription.dreams_used or 0
+    remaining = allowed - used
+
+    if remaining <= 0:
+        # Mejor semántica para cobros por uso
+        raise HTTPException(status_code=402, detail="No tienes créditos disponibles.")
+
+    # Llamada al orquestador de interpretación (IA)
+    try:
+        result = interpret_dream(dream_text, language=request.get("language", "es"))
+    except Exception as e:
+        # Error típico: falta OPENAI_API_KEY u otro fallo del proveedor
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error generando la interpretación: {str(e)}"
+        )
+
+    # Consumir 1 crédito
+    subscription.dreams_used = (subscription.dreams_used or 0) + 1
     db.commit()
 
+    new_remaining = (subscription.dreams_allowed or 0) - (subscription.dreams_used or 0)
     return {
         "interpretation": result,
-        "remaining": subscription.dreams_allowed - subscription.dreams_used
+        "remaining": new_remaining
     }
 
 # ===============================
