@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from database import get_db, Base, engine
@@ -13,7 +13,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from auth import auth_router, router as alt_auth_router
 from stripe_webhook import router as stripe_router
 
-app = FastAPI(title="Morphea Backend", version="1.6")
+app = FastAPI(title="Morphea Backend", version="1.7")
 
 # ===============================
 # Configuración CORS
@@ -131,52 +131,8 @@ def create_checkout_session(request: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 # ===============================
-# Endpoint: Webhook de Stripe
-# ===============================
-@app.post("/stripe-webhook")
-async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
-    payload = await request.body()
-    sig_header = request.headers.get("stripe-signature")
-    endpoint_secret = os.getenv("STRIPE_WEBHOOK_SECRET")
-
-    try:
-        event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Webhook error: {str(e)}")
-
-    if event["type"] == "checkout.session.completed":
-        session = event["data"]["object"]
-        email = session.get("customer_details", {}).get("email")
-
-        if email:
-            user = db.query(User).filter(User.email == email).first()
-            if user:
-                credits = 0
-                if session.get("amount_total") == 999:
-                    credits = 5
-                elif session.get("amount_total") == 1799:
-                    credits = 10
-                elif session.get("amount_total") == 2999:
-                    credits = 20
-
-                if credits > 0:
-                    subscription = db.query(Subscription).filter(Subscription.user_id == user.id).first()
-                    if subscription:
-                        subscription.dreams_allowed += credits
-                    else:
-                        subscription = Subscription(
-                            user_id=user.id,
-                            dreams_allowed=credits,
-                            dreams_used=0
-                        )
-                        db.add(subscription)
-                    db.commit()
-
-    return {"status": "success"}
-
-# ===============================
 # Incluir Routers
 # ===============================
 app.include_router(auth_router)       # principal
 app.include_router(alt_auth_router)   # alias de compatibilidad
-app.include_router(stripe_router)
+app.include_router(stripe_router)     # aquí vive el webhook real

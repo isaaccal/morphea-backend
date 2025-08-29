@@ -1,4 +1,5 @@
 import os
+import json
 import stripe
 from fastapi import APIRouter, Request, BackgroundTasks
 from fastapi.responses import Response
@@ -7,12 +8,12 @@ from database import engine
 
 router = APIRouter()
 
-# Configuración de Stripe
+# Stripe
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 
-# Mapeo price_id → créditos
-PRICE_ID_TO_CREDITS = {
+# Mapeo por defecto (como lo tenías)
+DEFAULT_PRICE_ID_TO_CREDITS = {
     # Español
     "price_1RideaP4qwLeB58n0aI63JCJ": 5,
     "price_1RidiwP4qwLeB58nx0JVN979": 10,
@@ -31,6 +32,20 @@ PRICE_ID_TO_CREDITS = {
     "price_1Rj28EP4qwLeB58n0f5gumhj": 20,
 }
 
+# Permite override vía env CREDIT_PRICE_MAP='{"price_xxx":5,...}'
+def load_price_map():
+    raw = os.getenv("CREDIT_PRICE_MAP", "").strip()
+    if not raw:
+        return DEFAULT_PRICE_ID_TO_CREDITS
+    try:
+        data = json.loads(raw)
+        return {str(k): int(v) for k, v in data.items()}
+    except Exception as e:
+        print(f"[webhook] CREDIT_PRICE_MAP inválido ({e}), usando defaults.")
+        return DEFAULT_PRICE_ID_TO_CREDITS
+
+PRICE_ID_TO_CREDITS = load_price_map()
+
 
 def process_event(event: dict):
     """Procesa el evento de Stripe y actualiza DB"""
@@ -38,7 +53,7 @@ def process_event(event: dict):
     event_id = event.get("id")
     mode = "live" if event.get("livemode") else "test"
 
-    # Guardar evento en stripe_events
+    # Persistimos el evento (idempotencia por event_id)
     try:
         with engine.begin() as conn:
             conn.execute(
@@ -59,12 +74,13 @@ def process_event(event: dict):
     session = event["data"]["object"]
     email = (session.get("customer_details") or {}).get("email")
     amount = session.get("amount_total") or 0
-    currency = session.get("currency") or "usd"
+    currency = (session.get("currency") or "usd").lower()
     pi_id = session.get("payment_intent") or ""
 
-    # Obtener price_id desde los line_items
+    # price_id -> créditos (usamos line_items)
     credits, price_id = 0, None
     try:
+        # Puedes cambiar a expand=["line_items.data.price"] si prefieres
         items = stripe.checkout.Session.list_line_items(session["id"], limit=1)
         if items.data and items.data[0].price:
             price_id = items.data[0].price.id
@@ -79,9 +95,10 @@ def process_event(event: dict):
         print("[webhook] No se encontró email en session")
         return
 
+    # Insert pago (idempotencia por payment_intent) y acreditar
     try:
         with engine.begin() as conn:
-            # Buscar usuario
+            # Buscar usuario por email
             row = conn.execute(
                 text("SELECT id FROM users WHERE email=:e"),
                 {"e": email}
@@ -91,7 +108,7 @@ def process_event(event: dict):
                 return
             uid = row[0]
 
-            # Insertar en payments
+            # Insertar pago (evita duplicados por intent/evento)
             conn.execute(text("""
                 INSERT INTO payments
                     (user_id, plan_name, price_id, credits_added, amount, currency,
@@ -112,19 +129,27 @@ def process_event(event: dict):
                 "mode": mode
             })
 
-            # Actualizar suscripción
+            # Acreditar en subscriptions (crea si no existe)
             sub = conn.execute(
-                text("SELECT id, dreams_allowed FROM subscriptions WHERE user_id=:u FOR UPDATE"),
+                text("SELECT id FROM subscriptions WHERE user_id=:u FOR UPDATE"),
                 {"u": uid}
             ).fetchone()
+
             if sub:
                 conn.execute(
-                    text("UPDATE subscriptions SET dreams_allowed=COALESCE(dreams_allowed,0)+:add WHERE user_id=:u"),
+                    text("""
+                        UPDATE subscriptions
+                        SET dreams_allowed = COALESCE(dreams_allowed,0) + :add
+                        WHERE user_id = :u
+                    """),
                     {"add": credits, "u": uid}
                 )
             else:
                 conn.execute(
-                    text("INSERT INTO subscriptions (user_id, dreams_allowed, dreams_used, created_at) VALUES (:u,:allow,0,NOW())"),
+                    text("""
+                        INSERT INTO subscriptions (user_id, dreams_allowed, dreams_used, created_at)
+                        VALUES (:u, :allow, 0, NOW())
+                    """),
                     {"u": uid, "allow": credits}
                 )
 
