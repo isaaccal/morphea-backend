@@ -176,3 +176,7 @@ def create_checkout_session(request: dict):
 app.include_router(auth_router)       # principal
 app.include_router(alt_auth_router)   # alias de compatibilidad
 app.include_router(stripe_router)     # aqu¨ª vive el webhook real
+
+from fastapi.staticfiles import StaticFiles
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
