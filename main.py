@@ -9,27 +9,30 @@ import os
 from jose import jwt, JWTError
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-# 馃憞 Importar routers
+# ?? Importar routers (como ya lo tenías)
 from auth import auth_router, router as alt_auth_router
 from stripe_webhook import router as stripe_router
 
-app = FastAPI(title="Morphea Backend", version="1.8")
+app = FastAPI(title="Morphea Backend", version="1.9")
 
 # ===============================
-# Configuraci贸n CORS
+# Configuración CORS (restringido a tu dominio)
 # ===============================
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # en producci贸n restringir a https://morphea.ai
+    allow_origins=[
+        "https://morphea.ai",
+        "https://www.morphea.ai",
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # ===============================
 # Stripe Config
 # ===============================
-stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY")  # clave TEST (compatibilidad)
 FRONTEND_URL = os.getenv("FRONTEND_URL", "https://morphea.ai")
 
 # ===============================
@@ -39,6 +42,7 @@ JWT_SECRET = os.getenv("JWT_SECRET_KEY", "supersecret")
 ALGORITHM = "HS256"
 bearer_scheme = HTTPBearer()
 
+
 def get_current_user(
     creds: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db: Session = Depends(get_db),
@@ -47,12 +51,13 @@ def get_current_user(
         payload = jwt.decode(creds.credentials, JWT_SECRET, algorithms=[ALGORITHM])
         email = payload.get("sub")
     except JWTError:
-        raise HTTPException(status_code=401, detail="Token inv谩lido")
+        raise HTTPException(status_code=401, detail="Token inválido")
 
     user = db.query(User).filter(User.email == email).first()
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     return user
+
 
 # ===============================
 # Startup Event
@@ -62,6 +67,7 @@ def on_startup():
     # Crear tablas si no existen
     Base.metadata.create_all(bind=engine)
 
+
 # ===============================
 # Healthcheck
 # ===============================
@@ -69,12 +75,14 @@ def on_startup():
 def health():
     return {"status": "ok"}
 
+
 @app.get("/")
 def root():
-    return {"message": "Morphea backend funcionando 馃殌"}
+    return {"message": "Morphea backend funcionando ??"}
+
 
 # ===============================
-# Endpoint: Interpretar sue帽os
+# Endpoint: Interpretar sue?os
 # ===============================
 @app.post("/interpretar")
 def interpretar(
@@ -82,20 +90,20 @@ def interpretar(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # Validaci贸n de payload
-    dream_text = request.get("message")   # 馃憟 usamos "message"
+    # Validación de payload
+    dream_text = request.get("message")   # ?? usamos "message"
     if not dream_text or not isinstance(dream_text, str):
-        raise HTTPException(status_code=400, detail="Falta el texto del sue帽o")
+        raise HTTPException(status_code=400, detail="Falta el texto del sue?o")
 
-    # Obtener / normalizar suscripci贸n
+    # Obtener / normalizar suscripción
     subscription = (
         db.query(Subscription)
         .filter(Subscription.user_id == current_user.id)
         .first()
     )
     if not subscription:
-        # No se crea suscripci贸n aqu铆 para no cambiar l贸gica previa:
-        raise HTTPException(status_code=402, detail="No tienes cr茅ditos disponibles.")
+        # No se crea suscripción aquí para no cambiar lógica previa:
+        raise HTTPException(status_code=402, detail="No tienes créditos disponibles.")
 
     # Normalizar nulos y calcular saldo
     if subscription.dreams_used is None:
@@ -107,20 +115,20 @@ def interpretar(
     remaining = allowed - used
 
     if remaining <= 0:
-        # Mejor sem谩ntica para cobros por uso
-        raise HTTPException(status_code=402, detail="No tienes cr茅ditos disponibles.")
+        # Mejor semántica para cobros por uso
+        raise HTTPException(status_code=402, detail="No tienes créditos disponibles.")
 
-    # Llamada al orquestador de interpretaci贸n (IA)
+    # Llamada al orquestador de interpretación (IA)
     try:
         result = interpret_dream(dream_text, language=request.get("language", "es"))
     except Exception as e:
-        # Error t铆pico: falta OPENAI_API_KEY u otro fallo del proveedor
+        # Error típico: falta OPENAI_API_KEY u otro fallo del proveedor
         raise HTTPException(
             status_code=500,
-            detail=f"Error generando la interpretaci贸n: {str(e)}"
+            detail=f"Error generando la interpretación: {str(e)}"
         )
 
-    # Consumir 1 cr茅dito
+    # Consumir 1 crédito
     subscription.dreams_used = (subscription.dreams_used or 0) + 1
     db.commit()
 
@@ -130,8 +138,9 @@ def interpretar(
         "remaining": new_remaining
     }
 
+
 # ===============================
-# Endpoint: Crear sesi贸n de pago
+# Endpoint: Crear sesión de pago
 # ===============================
 @app.post("/create-checkout-session")
 def create_checkout_session(request: dict):
@@ -145,7 +154,7 @@ def create_checkout_session(request: dict):
     }
 
     if plan not in PRICE_IDS:
-        raise HTTPException(status_code=400, detail="Plan inv谩lido")
+        raise HTTPException(status_code=400, detail="Plan inválido")
 
     try:
         session = stripe.checkout.Session.create(
@@ -160,9 +169,10 @@ def create_checkout_session(request: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 # ===============================
 # Incluir Routers
 # ===============================
 app.include_router(auth_router)       # principal
 app.include_router(alt_auth_router)   # alias de compatibilidad
-app.include_router(stripe_router)     # aqu铆 vive el webhook real
+app.include_router(stripe_router)     # aquí vive el webhook real
